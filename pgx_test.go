@@ -2,6 +2,7 @@ package sqlscan_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/dacohen/sqlscan"
@@ -13,41 +14,52 @@ type Author struct {
 	ID        int64   `db:"id"`
 	Name      string  `db:"name"`
 	Publisher *string `db:"publisher"`
+
+	Books []Book `db:"books"`
 }
 
 type Book struct {
 	ID       int64  `db:"id"`
 	AuthorID int64  `db:"author_id"`
-	Title    string `db:"name"`
+	Title    string `db:"title"`
 }
 
 func setupDB(ctx context.Context, t *testing.T, tx pgx.Tx) {
 	t.Helper()
 
 	_, err := tx.Exec(ctx, `CREATE TABLE authors (
-		id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+		id BIGINT PRIMARY KEY,
 		name TEXT NOT NULL,
 		publisher TEXT
 	)`)
 	assert.NoError(t, err)
 
 	_, err = tx.Exec(ctx, `CREATE TABLE books (
-		id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+		id BIGINT PRIMARY KEY,
 		author_id BIGINT NOT NULL REFERENCES authors (id),
 		title TEXT NOT NULL
 	)`)
 	assert.NoError(t, err)
 
-	_, err = tx.Exec(ctx, `INSERT INTO authors (name, publisher)
-		VALUES ('Neal Stephenson', 'HarperCollins'),
-		('James Joyce', NULL)`)
+	_, err = tx.Exec(ctx, `INSERT INTO authors (id, name, publisher)
+		VALUES (1, 'Neal Stephenson', 'HarperCollins'),
+		(2, 'James Joyce', NULL)`)
+	assert.NoError(t, err)
+
+	_, err = tx.Exec(ctx, `INSERT INTO books (id, author_id, title)
+		VALUES (1, 1, 'Cryptonomicon'), (2, 1, 'Snow Crash'), (3, 2, 'Ulysses')`)
 	assert.NoError(t, err)
 }
 
 func TestPgxScan(t *testing.T) {
+
+	dbUrl, ok := os.LookupEnv("DATABASE_URL")
+	if !ok {
+		dbUrl = "host=localhost user=postgres dbname=sqlscan_test"
+	}
+
 	t.Run("single row", func(t *testing.T) {
 		ctx := context.Background()
-		dbUrl := "host=localhost user=postgres dbname=sqlscan_test"
 		conn, err := pgx.Connect(ctx, dbUrl)
 		assert.NoError(t, err)
 		defer conn.Close(ctx)
@@ -58,21 +70,45 @@ func TestPgxScan(t *testing.T) {
 
 		setupDB(ctx, t, tx)
 
-		rows, err := tx.Query(ctx, `SELECT * FROM authors ORDER BY id ASC LIMIT 1`)
+		rows, err := tx.Query(ctx, `SELECT
+			authors.*,
+			0 AS "scan:many(books, id)",
+			books.*
+		FROM authors
+		JOIN books ON books.author_id = authors.id
+		WHERE authors.id = 1
+		ORDER BY authors.id ASC`)
 		assert.NoError(t, err)
 
 		var author Author
 		scanner := sqlscan.NewPgxScanner(rows)
 		err = scanner.Scan(&author)
 		assert.NoError(t, err)
-		assert.Equal(t, int64(1), author.ID)
-		assert.Equal(t, "Neal Stephenson", author.Name)
-		assert.Equal(t, "HarperCollins", *author.Publisher)
+
+		publisher := "HarperCollins"
+		expectedResult := Author{
+			ID:        1,
+			Name:      "Neal Stephenson",
+			Publisher: &publisher,
+			Books: []Book{
+				{
+					ID:       1,
+					AuthorID: 1,
+					Title:    "Cryptonomicon",
+				},
+				{
+					ID:       2,
+					AuthorID: 1,
+					Title:    "Snow Crash",
+				},
+			},
+		}
+
+		assert.EqualValues(t, expectedResult, author)
 	})
 
 	t.Run("multiple rows", func(t *testing.T) {
 		ctx := context.Background()
-		dbUrl := "host=localhost user=postgres dbname=sqlscan_test"
 		conn, err := pgx.Connect(ctx, dbUrl)
 		assert.NoError(t, err)
 		defer conn.Close(ctx)
@@ -83,19 +119,52 @@ func TestPgxScan(t *testing.T) {
 
 		setupDB(ctx, t, tx)
 
-		rows, err := tx.Query(ctx, `SELECT * FROM authors ORDER BY id ASC`)
+		rows, err := tx.Query(ctx, `SELECT
+			authors.*,
+			0 AS "scan:many(books, id)",
+			books.*
+		FROM authors
+		JOIN books ON books.author_id = authors.id
+		ORDER BY authors.id ASC`)
 		assert.NoError(t, err)
 
 		var authors []Author
 		scanner := sqlscan.NewPgxScanner(rows)
 		err = scanner.Scan(&authors)
 		assert.NoError(t, err)
-		assert.Len(t, authors, 2)
-		assert.Equal(t, int64(1), authors[0].ID)
-		assert.Equal(t, "Neal Stephenson", authors[0].Name)
-		assert.NotNil(t, authors[0].Publisher)
-		assert.Equal(t, int64(2), authors[1].ID)
-		assert.Equal(t, "James Joyce", authors[1].Name)
-		assert.Nil(t, authors[1].Publisher)
+
+		publisher := "HarperCollins"
+		expectedResult := []Author{
+			{
+				ID:        1,
+				Name:      "Neal Stephenson",
+				Publisher: &publisher,
+				Books: []Book{
+					{
+						ID:       1,
+						AuthorID: 1,
+						Title:    "Cryptonomicon",
+					},
+					{
+						ID:       2,
+						AuthorID: 1,
+						Title:    "Snow Crash",
+					},
+				},
+			},
+			{
+				ID:   2,
+				Name: "James Joyce",
+				Books: []Book{
+					{
+						ID:       3,
+						AuthorID: 2,
+						Title:    "Ulysses",
+					},
+				},
+			},
+		}
+
+		assert.EqualValues(t, expectedResult, authors)
 	})
 }

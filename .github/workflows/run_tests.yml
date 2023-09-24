@@ -1,0 +1,33 @@
+name: Run Tests
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: golang:1.21
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sqlscan_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          go install github.com/jstemmer/go-junit-report@latest
+      - name: Test
+        env:
+          DATABASE_URL: "user=postgres host=postgres port=5432 password=postgres dbname=sqlscan_test"
+        run: go test -v ./... | go-junit-report -set-exit-code > report.xml
+      - name: Upload Go test results
+        uses: test-summary/action@v2
+        with:
+          paths: report.xml
+        if: always()
