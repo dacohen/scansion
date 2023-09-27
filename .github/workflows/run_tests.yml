@@ -5,9 +5,13 @@ jobs:
     runs-on: ubuntu-latest
     container: golang:1.21
 
+    strategy:
+      matrix:
+        postgres_version: [14, 15, 16]
+
     services:
       postgres:
-        image: postgres:15
+        image: postgres:${{ matrix.postgres_version }}
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: scansion_test
