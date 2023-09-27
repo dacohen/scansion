@@ -46,7 +46,7 @@ func (p *PgxScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
 	for i, desc := range p.rows.FieldDescriptions() {
 		if strings.HasPrefix(desc.Name, scanPrefix) {
 			scanField := strings.TrimPrefix(desc.Name, scanPrefix)
-			path = append(path, scanField)
+			path = strings.Split(scanField, ".")
 			continue
 		}
 
@@ -105,10 +105,7 @@ func buildHelper(fieldMap fieldMapType, path []string) {
 	}
 
 	for _, childName := range children {
-		var newPath []string
-		newPath = append(newPath, path...)
-		newPath = append(newPath, childName)
-
+		newPath := append(path, childName)
 		childField := fieldMap[strings.Join(newPath, ".")]
 
 		buildHelper(fieldMap, newPath)

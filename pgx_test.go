@@ -211,7 +211,7 @@ func TestPgxScan(t *testing.T) {
 			authors.*,
 			0 AS "scan:books",
 			books.*,
-			0 AS "scan:bookshelves",
+			0 AS "scan:books.bookshelves",
 			bookshelves.*
 		FROM authors
 		JOIN books ON books.author_id = authors.id
