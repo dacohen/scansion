@@ -1,26 +1,25 @@
 package sqlscan_test
 
 import (
-	"context"
+	"database/sql"
 	"os"
 	"testing"
 
 	"github.com/dacohen/sqlscan"
-	"github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 )
 
-func setupPgxDB(ctx context.Context, t *testing.T, queries []string, tx pgx.Tx) {
+func setupSqlDb(t *testing.T, queries []string, tx *sql.Tx) {
 	t.Helper()
 
 	for _, query := range queries {
-		_, err := tx.Exec(ctx, query)
+		_, err := tx.Exec(query)
 		assert.NoError(t, err)
 	}
 }
 
-func TestPgxScan(t *testing.T) {
-
+func TestSqlScan(t *testing.T) {
 	dbUrl, ok := os.LookupEnv("DATABASE_URL")
 	if !ok {
 		dbUrl = "host=localhost user=postgres dbname=sqlscan_test"
@@ -28,21 +27,20 @@ func TestPgxScan(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			ctx := context.Background()
-			db, err := pgx.Connect(ctx, dbUrl)
+			db, err := sql.Open("pgx", dbUrl)
 			assert.NoError(t, err)
-			defer db.Close(ctx)
+			defer db.Close()
 
-			tx, err := db.Begin(ctx)
+			tx, err := db.Begin()
 			assert.NoError(t, err)
-			defer tx.Rollback(ctx)
+			defer tx.Rollback()
 
-			setupPgxDB(ctx, t, setupQueries, tx)
+			setupSqlDb(t, setupQueries, tx)
 
-			rows, err := tx.Query(ctx, testCase.query)
+			rows, err := tx.Query(testCase.query)
 			assert.NoError(t, err)
 
-			scanner := sqlscan.NewPgxScanner(rows)
+			scanner := sqlscan.NewSqlScanner(rows)
 			if testCase.manyRows {
 				var target []Author
 				err = scanner.Scan(&target)
