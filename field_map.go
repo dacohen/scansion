@@ -4,32 +4,43 @@ import (
 	"errors"
 	"maps"
 	"reflect"
+	"slices"
 	"strings"
 )
 
 const dbTag = "db"
 
 type fieldMapEntry struct {
-	Type        reflect.Type
-	Value       reflect.Value
-	ParentValue reflect.Value
-	ParentType  reflect.Type
-	Path        []string
-	StructIdx   int
+	Type      reflect.Type
+	Value     reflect.Value
+	StructIdx int
 }
 
 type fieldMapType map[string]fieldMapEntry
 
 func getFieldMap(s interface{}) (fieldMapType, error) {
+	sVal := reflect.ValueOf(s)
 	sType := reflect.TypeOf(s)
 	if sType.Kind() != reflect.Pointer && sType.Elem().Kind() != reflect.Struct {
 		return nil, errors.New("input is not a struct pointer")
 	}
 
-	return getFieldMapHelper(s, nil, reflect.Value{})
+	rootMapEntry := fieldMapEntry{
+		Type:  sType,
+		Value: sVal,
+	}
+
+	fieldMap, err := getFieldMapHelper(s, nil, []reflect.Type{sType})
+	if err != nil {
+		return fieldMapType{}, err
+	}
+
+	fieldMap[""] = rootMapEntry
+
+	return fieldMap, nil
 }
 
-func getFieldMapHelper(s interface{}, path []string, parentValue reflect.Value) (fieldMapType, error) {
+func getFieldMapHelper(s interface{}, path []string, visited []reflect.Type) (fieldMapType, error) {
 	fieldMap := make(fieldMapType)
 
 	sType := reflect.TypeOf(s).Elem()
@@ -50,29 +61,30 @@ func getFieldMapHelper(s interface{}, path []string, parentValue reflect.Value) 
 		}
 
 		if structFieldType.Type.Kind() == reflect.Slice {
+			visitedType := sValue.Field(i).Type()
+			if visitedType.Kind() == reflect.Slice || visitedType.Kind() == reflect.Pointer {
+				visitedType = visitedType.Elem()
+			}
+			if slices.Contains(path, dbTag) || slices.Contains(visited, visitedType) {
+				continue
+			}
+
 			nestedMap, err := getFieldMapHelper(
 				reflect.New(structFieldType.Type).Interface(),
 				append(path, dbTag),
-				sValue.Field(i))
+				append(visited, visitedType))
 			if err != nil {
 				return nil, err
 			}
 			maps.Copy(fieldMap, nestedMap)
 		}
+
 		scopedName := strings.Join(append(path, dbTag), ".")
-
-		mapEntry := fieldMapEntry{
-			Type:        structFieldType.Type,
-			Value:       sValue.Field(i),
-			ParentValue: parentValue,
-			Path:        path,
-			StructIdx:   i,
+		fieldMap[scopedName] = fieldMapEntry{
+			Type:      structFieldType.Type,
+			Value:     sValue.Field(i),
+			StructIdx: i,
 		}
-		if parentValue.IsValid() {
-			mapEntry.ParentType = parentValue.Type()
-		}
-
-		fieldMap[scopedName] = mapEntry
 	}
 
 	return fieldMap, nil
