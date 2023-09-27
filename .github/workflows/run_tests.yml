@@ -10,7 +10,7 @@ jobs:
         image: postgres:15
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: sqlscan_test
+          POSTGRES_DB: scansion_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -24,7 +24,7 @@ jobs:
           go install github.com/jstemmer/go-junit-report@latest
       - name: Test
         env:
-          DATABASE_URL: "user=postgres host=postgres port=5432 password=postgres dbname=sqlscan_test"
+          DATABASE_URL: "user=postgres host=postgres port=5432 password=postgres dbname=scansion_test"
         run: go test -v ./... | go-junit-report -set-exit-code > report.xml
       - name: Upload Go test results
         uses: test-summary/action@v2

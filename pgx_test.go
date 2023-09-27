@@ -1,11 +1,11 @@
-package sqlscan_test
+package scansion_test
 
 import (
 	"context"
 	"os"
 	"testing"
 
-	"github.com/dacohen/sqlscan"
+	"github.com/dacohen/scansion"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 )
@@ -23,7 +23,7 @@ func TestPgxScan(t *testing.T) {
 
 	dbUrl, ok := os.LookupEnv("DATABASE_URL")
 	if !ok {
-		dbUrl = "host=localhost user=postgres dbname=sqlscan_test"
+		dbUrl = "host=localhost user=postgres dbname=scansion_test"
 	}
 
 	for _, testCase := range testCases {
@@ -42,7 +42,7 @@ func TestPgxScan(t *testing.T) {
 			rows, err := tx.Query(ctx, testCase.query)
 			assert.NoError(t, err)
 
-			scanner := sqlscan.NewPgxScanner(rows)
+			scanner := scansion.NewPgxScanner(rows)
 			if testCase.manyRows {
 				var target []Author
 				err = scanner.Scan(&target)

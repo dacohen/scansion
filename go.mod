@@ -1,4 +1,4 @@
-module github.com/dacohen/sqlscan
+module github.com/dacohen/scansion
 
 go 1.21.1
 

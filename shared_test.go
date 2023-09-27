@@ -1,4 +1,4 @@
-package sqlscan_test
+package scansion_test
 
 import (
 	"errors"

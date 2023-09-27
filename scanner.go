@@ -1,4 +1,4 @@
-package sqlscan
+package scansion
 
 type Scanner interface {
 	Scan(v interface{}) error
