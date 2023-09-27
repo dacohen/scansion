@@ -45,11 +45,8 @@ func (p *PgxScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
 	var path []string
 	for i, desc := range p.rows.FieldDescriptions() {
 		if strings.HasPrefix(desc.Name, scanPrefix) {
-			scanCol, err := parseScanColumn(desc.Name)
-			if err != nil {
-				return err
-			}
-			path = append(path, strings.Split(scanCol.FieldName, ".")...)
+			scanField := strings.TrimPrefix(desc.Name, scanPrefix)
+			path = append(path, scanField)
 			continue
 		}
 
@@ -152,8 +149,16 @@ func sliceMerge(slice, elem reflect.Value) error {
 	startingSliceLen := slice.Len()
 	for i := 0; i < startingSliceLen; i++ {
 		sliceVal := slice.Index(i)
-		// TODO: This should actually look at the scan columns
-		if !sliceVal.FieldByName("ID").Equal(elem.FieldByName("ID")) {
+		slicePk, err := getPkValue(sliceVal)
+		if err != nil {
+			return err
+		}
+		elemPk, err := getPkValue(elem)
+		if err != nil {
+			return err
+		}
+
+		if !slicePk.Equal(elemPk) {
 			// Only append if we're out of options
 			if i == startingSliceLen-1 {
 				slice.Set(reflect.Append(slice, elem))

@@ -8,7 +8,12 @@ import (
 	"strings"
 )
 
-const dbTag = "db"
+const (
+	dbTagName     = "db"
+	dbTagOptionPk = "pk"
+
+	scanPrefix = "scan:"
+)
 
 type fieldMapEntry struct {
 	Type      reflect.Type
@@ -52,12 +57,16 @@ func getFieldMapHelper(s interface{}, path []string, visited []reflect.Type) (fi
 
 	for i := 0; i < sType.NumField(); i++ {
 		structFieldType := sType.Field(i)
-		dbTag := structFieldType.Tag.Get(dbTag)
-		if dbTag == "" {
+		fullDbTag := structFieldType.Tag.Get(dbTagName)
+		if fullDbTag == "" {
 			continue
 		}
-		if strings.HasPrefix(dbTag, scanPrefix) {
-			continue
+		dbTagParts := strings.Split(fullDbTag, ",")
+		dbTagParts = mapFn(dbTagParts, strings.TrimSpace)
+
+		dbFieldName := fullDbTag
+		if len(dbTagParts) > 1 {
+			dbFieldName = dbTagParts[0]
 		}
 
 		if structFieldType.Type.Kind() == reflect.Slice {
@@ -65,13 +74,13 @@ func getFieldMapHelper(s interface{}, path []string, visited []reflect.Type) (fi
 			if visitedType.Kind() == reflect.Slice || visitedType.Kind() == reflect.Pointer {
 				visitedType = visitedType.Elem()
 			}
-			if slices.Contains(path, dbTag) || slices.Contains(visited, visitedType) {
+			if slices.Contains(path, dbFieldName) || slices.Contains(visited, visitedType) {
 				continue
 			}
 
 			nestedMap, err := getFieldMapHelper(
 				reflect.New(structFieldType.Type).Interface(),
-				append(path, dbTag),
+				append(path, dbFieldName),
 				append(visited, visitedType))
 			if err != nil {
 				return nil, err
@@ -79,7 +88,7 @@ func getFieldMapHelper(s interface{}, path []string, visited []reflect.Type) (fi
 			maps.Copy(fieldMap, nestedMap)
 		}
 
-		scopedName := strings.Join(append(path, dbTag), ".")
+		scopedName := strings.Join(append(path, dbFieldName), ".")
 		fieldMap[scopedName] = fieldMapEntry{
 			Type:      structFieldType.Type,
 			Value:     sValue.Field(i),
@@ -88,4 +97,40 @@ func getFieldMapHelper(s interface{}, path []string, visited []reflect.Type) (fi
 	}
 
 	return fieldMap, nil
+}
+
+func getPkValue(s reflect.Value) (reflect.Value, error) {
+	var pkValue reflect.Value
+
+	if s.Kind() == reflect.Pointer {
+		s = s.Elem()
+	}
+
+	if s.Kind() != reflect.Struct {
+		return reflect.Value{}, errors.New("input must be of type struct")
+	}
+
+	for i := 0; i < s.NumField(); i++ {
+		fieldType := s.Type().Field(i)
+		fieldVal := s.Field(i)
+		fullDbTag := fieldType.Tag.Get(dbTagName)
+		if fullDbTag == "" {
+			continue
+		}
+		dbTagParts := strings.Split(fullDbTag, ",")
+		dbTagParts = mapFn(dbTagParts, strings.TrimSpace)
+
+		if len(dbTagParts) == 2 && dbTagParts[1] == dbTagOptionPk {
+			if pkValue.IsValid() {
+				return reflect.Value{}, errors.New("exactly one column must have 'pk' set")
+			}
+			pkValue = fieldVal
+		}
+	}
+
+	if !pkValue.IsValid() {
+		return reflect.Value{}, errors.New("exactly one column must have 'pk' set")
+	}
+
+	return pkValue, nil
 }

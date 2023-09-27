@@ -11,7 +11,7 @@ import (
 )
 
 type Author struct {
-	ID        int64   `db:"id"`
+	ID        int64   `db:"id,pk"`
 	Name      string  `db:"name"`
 	Publisher *string `db:"publisher"`
 
@@ -19,7 +19,7 @@ type Author struct {
 }
 
 type Book struct {
-	ID       int64  `db:"id"`
+	ID       int64  `db:"id,pk"`
 	AuthorID int64  `db:"author_id"`
 	Title    string `db:"title"`
 
@@ -27,7 +27,7 @@ type Book struct {
 }
 
 type Bookshelf struct {
-	ID   int64  `db:"id"`
+	ID   int64  `db:"id,pk"`
 	Name string `db:"name"`
 
 	Books []Book `db:"books"`
@@ -99,7 +99,7 @@ func TestPgxScan(t *testing.T) {
 
 		rows, err := tx.Query(ctx, `SELECT
 			authors.*,
-			0 AS "scan:many(books, id)",
+			0 AS "scan:books",
 			books.*
 		FROM authors
 		JOIN books ON books.author_id = authors.id
@@ -148,7 +148,7 @@ func TestPgxScan(t *testing.T) {
 
 		rows, err := tx.Query(ctx, `SELECT
 			authors.*,
-			0 AS "scan:many(books, id)",
+			0 AS "scan:books",
 			books.*
 		FROM authors
 		JOIN books ON books.author_id = authors.id
@@ -209,9 +209,9 @@ func TestPgxScan(t *testing.T) {
 
 		rows, err := tx.Query(ctx, `SELECT
 			authors.*,
-			0 AS "scan:many(books, books.id)",
+			0 AS "scan:books",
 			books.*,
-			0 AS "scan:many(bookshelves, books.bookshelves.id)",
+			0 AS "scan:bookshelves",
 			bookshelves.*
 		FROM authors
 		JOIN books ON books.author_id = authors.id

@@ -5,6 +5,14 @@ import (
 	"strings"
 )
 
+func mapFn[T any, U any](s []T, fn func(T) U) []U {
+	result := make([]U, len(s))
+	for i, v := range s {
+		result[i] = fn(v)
+	}
+	return result
+}
+
 func hasPrefix[T comparable](s []T, p []T) bool {
 	if len(p) == 0 {
 		return true
