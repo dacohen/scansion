@@ -1,5 +1,6 @@
 # Scansion
 ![](https://github.com/dacohen/scansion/actions/workflows/run_tests.yml/badge.svg)
+[![Go Reference](https://pkg.go.dev/badge/github.com/dacohen/scansion.svg)](https://pkg.go.dev/github.com/dacohen/scansion)
 
 Scansion is a library for scanning SQL result sets into Go structs.
 Scansion currently supports the following libraries and scan sources:
