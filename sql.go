@@ -7,26 +7,31 @@ import (
 	"strings"
 )
 
+// PgxScanner wraps the *sql.Rows result set in Rows
 type SqlScanner struct {
-	rows *sql.Rows
+	Rows *sql.Rows
 }
 
+// NewPgxScanner takes a *sql.Rows struct and returns a SqlScanner
 func NewSqlScanner(rows *sql.Rows) *SqlScanner {
 	return &SqlScanner{
-		rows: rows,
+		Rows: rows,
 	}
 }
 
+// Scan maps the wrapped Rows into the provided interface.
+// Unless exactly one result is expected (e.g. LIMIT 1 is used)
+// a slice is the expected argument.
 func (s *SqlScanner) Scan(v interface{}) error {
-	defer s.rows.Close()
+	defer s.Rows.Close()
 
-	for s.rows.Next() {
+	for s.Rows.Next() {
 		fieldMap, err := getFieldMap(v)
 		if err != nil {
 			return err
 		}
 
-		if err = s.scanRow(s.rows.Scan, fieldMap); err != nil {
+		if err = s.scanRow(s.Rows.Scan, fieldMap); err != nil {
 			return err
 		}
 
@@ -37,7 +42,7 @@ func (s *SqlScanner) Scan(v interface{}) error {
 }
 
 func (s *SqlScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
-	columnTypes, err := s.rows.ColumnTypes()
+	columnTypes, err := s.Rows.ColumnTypes()
 	if err != nil {
 		return err
 	}
@@ -51,7 +56,7 @@ func (s *SqlScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
 			scanField := strings.TrimPrefix(col.Name(), scanPrefix)
 			path = strings.Split(scanField, ".")
 
-			// database/sql cannot scan into nil, so we create a placeholder
+			// database/sql cannot scan into nil, so we create a placeholder for the zero columns
 			targets[i] = reflect.New(reflect.PointerTo(reflect.TypeOf(0))).Interface()
 			scanColIdxs = append(scanColIdxs, i)
 
@@ -73,7 +78,7 @@ func (s *SqlScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
 		fields[i] = fieldEntry
 	}
 
-	if err := s.rows.Scan(targets...); err != nil {
+	if err := s.Rows.Scan(targets...); err != nil {
 		return err
 	}
 

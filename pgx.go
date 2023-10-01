@@ -8,26 +8,31 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// PgxScanner wraps the pgx.Rows result set in Rows
 type PgxScanner struct {
-	rows pgx.Rows
+	Rows pgx.Rows
 }
 
+// NewPgxScanner takes a pgx.Rows struct and returns a PgxScanner
 func NewPgxScanner(rows pgx.Rows) *PgxScanner {
 	return &PgxScanner{
-		rows: rows,
+		Rows: rows,
 	}
 }
 
+// Scan maps the wrapped Rows into the provided interface.
+// Unless exactly one result is expected (e.g. LIMIT 1 is used)
+// a slice is the expected argument.
 func (p *PgxScanner) Scan(v interface{}) error {
-	defer p.rows.Close()
+	defer p.Rows.Close()
 
-	for p.rows.Next() {
+	for p.Rows.Next() {
 		fieldMap, err := getFieldMap(v)
 		if err != nil {
 			return err
 		}
 
-		if err = p.scanRow(p.rows.Scan, fieldMap); err != nil {
+		if err = p.scanRow(p.Rows.Scan, fieldMap); err != nil {
 			return err
 		}
 
@@ -38,11 +43,12 @@ func (p *PgxScanner) Scan(v interface{}) error {
 }
 
 func (p *PgxScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
-	targets := make([]interface{}, len(p.rows.FieldDescriptions()))
-	fields := make([]fieldMapEntry, len(p.rows.FieldDescriptions()))
+	fieldDescriptions := p.Rows.FieldDescriptions()
+	targets := make([]interface{}, len(fieldDescriptions))
+	fields := make([]fieldMapEntry, len(fieldDescriptions))
 
 	var path []string
-	for i, desc := range p.rows.FieldDescriptions() {
+	for i, desc := range fieldDescriptions {
 		if strings.HasPrefix(desc.Name, scanPrefix) {
 			scanField := strings.TrimPrefix(desc.Name, scanPrefix)
 			path = strings.Split(scanField, ".")
@@ -64,7 +70,7 @@ func (p *PgxScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
 		fields[i] = fieldEntry
 	}
 
-	if err := p.rows.Scan(targets...); err != nil {
+	if err := p.Rows.Scan(targets...); err != nil {
 		return err
 	}
 
