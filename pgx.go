@@ -54,7 +54,13 @@ func (p *PgxScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
 		if !ok {
 			return fmt.Errorf("field %s not defined in scan target", scopedName)
 		}
-		targets[i] = reflect.New(fieldEntry.Type).Interface()
+
+		targetType := fieldEntry.Type
+		if fieldEntry.Optional {
+			targetType = reflect.PointerTo(targetType)
+		}
+
+		targets[i] = reflect.New(targetType).Interface()
 		fields[i] = fieldEntry
 	}
 
@@ -70,6 +76,12 @@ func (p *PgxScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
 
 		targetVal := reflect.ValueOf(t).Elem()
 		currentField := fields[idx]
+		if currentField.Optional {
+			if targetVal.IsNil() {
+				continue
+			}
+			targetVal = targetVal.Elem()
+		}
 
 		if currentField.Value.IsZero() {
 			currentField.Value.Set(targetVal)

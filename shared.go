@@ -34,6 +34,10 @@ func buildHelper(fieldMap fieldMapType, path []string) {
 		newPath := append(path, childName)
 		childField := fieldMap[strings.Join(newPath, ".")]
 
+		if childField.Value.Kind() == reflect.Pointer && childField.Value.IsNil() {
+			childField.Value.Set(reflect.New(childField.Type.Elem()))
+		}
+
 		buildHelper(fieldMap, newPath)
 
 		if childField.Value.IsValid() {
@@ -45,18 +49,27 @@ func buildHelper(fieldMap fieldMapType, path []string) {
 		targetVal = fieldMap[parentName].Value
 	}
 
-	if targetVal.IsZero() {
+	parentVal := parentField.Value
+	if !targetVal.IsValid() || targetVal.IsZero() ||
+		(targetVal.Kind() == reflect.Pointer && targetVal.Elem().IsZero()) {
+		// If the target is nil, clean up the empty parent element as well
+		parentVal.Set(reflect.Zero(parentVal.Type()))
 		return
 	}
 
 	if sliceTargetVal.IsValid() && targetVal.IsValid() {
-		// Here's where we do a recursive merge
+		// Recursively merge the slices
 		sliceMerge(sliceTargetVal, targetVal)
 	}
 
-	parentVal := parentField.Value
 	if parentVal.Kind() == reflect.Slice {
 		parentVal.Set(reflect.Append(parentVal, targetVal))
+	} else if parentVal.Kind() == reflect.Pointer &&
+		parentVal.Elem().Kind() != reflect.Slice {
+		if targetVal.Kind() == reflect.Pointer {
+			targetVal = targetVal.Elem()
+		}
+		parentVal.Elem().Set(targetVal)
 	}
 }
 
