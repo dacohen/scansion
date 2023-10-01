@@ -1,16 +1,18 @@
 # Scansion
+![](https://github.com/dacohen/scansion/actions/workflows/run_tests.yml/badge.svg)
 
 Scansion is a library for scanning SQL result sets into Go structs.
-Scansion currently supports the following libraries:
+Scansion currently supports the following libraries and scan sources:
 * [pgx](https://github.com/jackc/pgx) (pgx.Rows)
-* stdlib `database/sql` (*sql.Rows)
+* stdlib [database/sql](https://pkg.go.dev/database/sql) (*sql.Rows)
 
 How you generate your SQL is up to you.
-You can use an ORM, a query builder (e.g. [squirrel](https://github.com/Masterminds/squirrel)), or write it by hand. Scansion will process the results
+You can use an ORM, a query builder (e.g. [squirrel](https://github.com/Masterminds/squirrel)), or write it by hand. Scansion will process the results.
 
 Scansion supports:
 * Nested structs
-* One-to-many relationships
+* Nested struct slices (One-to-many relationships)
+* Optional/nullable fields
 
 ## Example
 ```go
@@ -98,7 +100,7 @@ type Author struct {
 }
 ```
 
-A primary key is notated, by adding `,pk` to the end of the `db` tag.
+A primary key is notated by adding `,pk` to the end of the `db` tag.
 
 This primary key is a column that uniquely identifies an instance of that struct in the results.
 This is often called `id` or similar.
@@ -110,7 +112,7 @@ For example:
 ```sql
 SELECT table_a.*, table_b.* FROM table_a JOIN table_b;
 ```
-If `table_a` and `table_b` both have an `id` column, the result set doesn't disambiguate, as the prefix `table_a.*` is elided on return.
+If `table_a` and `table_b` both have an `id` column, it's not possible to naively determine which is which, since the prefix `table_a.*` is elided on return.
 
 To solve this, scansion requires delineating the boundary between tables in a result set with a special, zero column:
 
@@ -122,3 +124,6 @@ SELECT
 FROM table_a
 JOIN table_b
 ```
+
+This means that all the columns following the zero column are presumed to be part of `table_b`,
+until the last column is reached, or another `scan` column is encountered.
