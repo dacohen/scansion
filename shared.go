@@ -41,7 +41,7 @@ func buildHelper(fieldMap fieldMapType, path []string) {
 		buildHelper(fieldMap, newPath)
 
 		if childField.Value.IsValid() {
-			targetVal.Field(childField.StructIdx).Set(childField.Value)
+			targetVal.FieldByIndex(childField.StructIdx).Set(childField.Value)
 		}
 	}
 

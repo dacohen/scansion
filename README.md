@@ -107,6 +107,10 @@ This primary key is a column that uniquely identifies an instance of that struct
 This is often called `id` or similar.
 This does not need to be an actual Primary Key in your database, although since they serve a similar purpose, it often will be.
 
+Occasionally, you'll use a struct that has a special purpose, such as a Postgres array,
+and shouldn't be treated as a sub-table.
+In these situations, you can add `,flat` to the end of the `db` tag to indicate that the struct should be treated as a flat member, rather than a nested one.
+
 ### Scan columns
 The SQL standard doesn't provide a mechanism for natively determining the boundary between tables.
 For example:

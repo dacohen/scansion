@@ -1,6 +1,7 @@
 package scansion
 
 import (
+	"database/sql"
 	"errors"
 	"maps"
 	"reflect"
@@ -9,8 +10,10 @@ import (
 )
 
 const (
-	dbTagName     = "db"
-	dbTagOptionPk = "pk"
+	dbTagName       = "db"
+	dbTagIgnore     = "-"
+	dbTagOptionPk   = "pk"
+	dbTagOptionFlat = "flat"
 
 	scanPrefix = "scan:"
 )
@@ -18,7 +21,7 @@ const (
 type fieldMapEntry struct {
 	Type      reflect.Type
 	Value     reflect.Value
-	StructIdx int
+	StructIdx []int
 	Optional  bool
 }
 
@@ -36,7 +39,7 @@ func getFieldMap(s interface{}) (fieldMapType, error) {
 		Value: sVal,
 	}
 
-	fieldMap, err := getFieldMapHelper(s, nil, []reflect.Type{sType}, false)
+	fieldMap, err := getFieldMapHelper(s, nil, nil, []reflect.Type{sType}, false)
 	if err != nil {
 		return fieldMapType{}, err
 	}
@@ -46,7 +49,7 @@ func getFieldMap(s interface{}) (fieldMapType, error) {
 	return fieldMap, nil
 }
 
-func getFieldMapHelper(s interface{}, path []string, visited []reflect.Type, optional bool) (fieldMapType, error) {
+func getFieldMapHelper(s interface{}, path []string, idxPath []int, visited []reflect.Type, optional bool) (fieldMapType, error) {
 	fieldMap := make(fieldMapType)
 
 	sType := reflect.TypeOf(s).Elem()
@@ -59,59 +62,82 @@ func getFieldMapHelper(s interface{}, path []string, visited []reflect.Type, opt
 	for i := 0; i < sType.NumField(); i++ {
 		structField := sType.Field(i)
 		fullDbTag := structField.Tag.Get(dbTagName)
-		if fullDbTag == "" {
+		if (fullDbTag == "" && !structField.Anonymous) || fullDbTag == dbTagIgnore {
 			continue
 		}
 		dbTagParts := strings.Split(fullDbTag, ",")
 		dbTagParts = mapFn(dbTagParts, strings.TrimSpace)
 
 		dbFieldName := fullDbTag
+		var extraOptions []string
 		if len(dbTagParts) > 1 {
 			dbFieldName = dbTagParts[0]
+			extraOptions = dbTagParts[1:]
 		}
 
-		if structField.Type.Kind() == reflect.Slice {
-			visitedType := structField.Type
-			if visitedType.Kind() == reflect.Slice || visitedType.Kind() == reflect.Pointer {
-				visitedType = visitedType.Elem()
-			}
-			if slices.Contains(path, dbFieldName) || slices.Contains(visited, visitedType) {
-				continue
-			}
+		scannable := structField.Type.Implements(reflect.TypeOf(new(sql.Scanner)).Elem())
+		canRecurse := !scannable && !isBuiltinStruct(structField.Type) && !slices.Contains(extraOptions, dbTagOptionFlat)
 
-			nestedMap, err := getFieldMapHelper(
-				reflect.New(visitedType).Interface(),
-				append(path, dbFieldName),
-				append(visited, visitedType),
-				optional)
-			if err != nil {
-				return nil, err
-			}
-			maps.Copy(fieldMap, nestedMap)
-		} else if structField.Type.Kind() == reflect.Pointer &&
-			structField.Type.Elem().Kind() == reflect.Struct {
-			visitedType := structField.Type.Elem()
+		if canRecurse {
+			if structField.Type.Kind() == reflect.Slice {
+				visitedType := structField.Type
+				if visitedType.Kind() == reflect.Slice || visitedType.Kind() == reflect.Pointer {
+					visitedType = visitedType.Elem()
+				}
+				if slices.Contains(path, dbFieldName) || slices.Contains(visited, visitedType) {
+					continue
+				}
 
-			if slices.Contains(path, dbFieldName) || slices.Contains(visited, visitedType) {
-				continue
-			}
+				nestedMap, err := getFieldMapHelper(
+					reflect.New(visitedType).Interface(),
+					append(path, dbFieldName),
+					idxPath,
+					append(visited, visitedType),
+					optional)
+				if err != nil {
+					return nil, err
+				}
+				maps.Copy(fieldMap, nestedMap)
+			} else if structField.Type.Kind() == reflect.Pointer &&
+				structField.Type.Elem().Kind() == reflect.Struct {
+				visitedType := structField.Type.Elem()
 
-			nestedMap, err := getFieldMapHelper(
-				reflect.New(visitedType).Interface(),
-				append(path, dbFieldName),
-				append(visited, visitedType),
-				true)
-			if err != nil {
-				return nil, err
+				if slices.Contains(path, dbFieldName) || slices.Contains(visited, visitedType) {
+					continue
+				}
+
+				nestedMap, err := getFieldMapHelper(
+					reflect.New(visitedType).Interface(),
+					append(path, dbFieldName),
+					idxPath,
+					append(visited, visitedType),
+					true)
+				if err != nil {
+					return nil, err
+				}
+				maps.Copy(fieldMap, nestedMap)
+			} else if structField.Type.Kind() == reflect.Struct && structField.Anonymous {
+				// Embedded struct
+				visitedType := structField.Type
+
+				nestedMap, err := getFieldMapHelper(
+					reflect.New(visitedType).Interface(),
+					path,
+					append(idxPath, i),
+					visited,
+					false)
+				if err != nil {
+					return nil, err
+				}
+				maps.Copy(fieldMap, nestedMap)
 			}
-			maps.Copy(fieldMap, nestedMap)
 		}
 
 		scopedName := strings.Join(append(path, dbFieldName), ".")
 		fieldMap[scopedName] = fieldMapEntry{
 			Type:      structField.Type,
 			Value:     sValue.Field(i),
-			StructIdx: i,
+			StructIdx: append(idxPath, i),
 			Optional:  optional,
 		}
 	}

@@ -1,6 +1,7 @@
 package scansion
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 )
@@ -54,4 +55,22 @@ func getChildren(fieldMap fieldMapType, prefix []string) []string {
 	}
 
 	return append(primitiveChildren, structChildren...)
+}
+
+func isBuiltinStruct(typ reflect.Type) bool {
+	if typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice {
+		typ = typ.Elem()
+	}
+
+	fullName := typ.Name()
+	if typ.PkgPath() != "" {
+		fullName = fmt.Sprintf("%s.%s", typ.PkgPath(), typ.Name())
+	}
+
+	switch fullName {
+	case "time.Time":
+		return true
+	default:
+		return false
+	}
 }

@@ -3,7 +3,13 @@ package scansion_test
 import (
 	"errors"
 	"regexp"
+	"time"
 )
+
+type Timestamps struct {
+	CreatedAt time.Time  `db:"created_at"`
+	UpdatedAt *time.Time `db:"updated_at"`
+}
 
 type Author struct {
 	ID         int64   `db:"id,pk"`
@@ -13,6 +19,8 @@ type Author struct {
 	Hometown   *City   `db:"hometown"`
 
 	Books []Book `db:"books"`
+
+	Timestamps
 }
 
 type MoneyType struct {
@@ -69,7 +77,9 @@ var setupQueries = []string{
 		id BIGINT PRIMARY KEY,
 		name TEXT NOT NULL,
 		publisher TEXT,
-		hometown_id BIGINT REFERENCES cities (id)
+		hometown_id BIGINT REFERENCES cities (id),
+		created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMPTZ
 	)`,
 	`CREATE TABLE books (
 		id BIGINT PRIMARY KEY,
@@ -87,9 +97,9 @@ var setupQueries = []string{
 	)`,
 	`INSERT INTO cities (id, name, country) VALUES
 	(1, 'Dublin', 'Ireland')`,
-	`INSERT INTO authors (id, name, publisher, hometown_id)
-	VALUES (1, 'Neal Stephenson', 'HarperCollins', NULL),
-	(2, 'James Joyce', NULL, 1)`,
+	`INSERT INTO authors (id, name, publisher, hometown_id, created_at)
+	VALUES (1, 'Neal Stephenson', 'HarperCollins', NULL, '2023-01-02 15:04:05 UTC'),
+	(2, 'James Joyce', NULL, 1, '2023-01-02 15:04:05 UTC')`,
 	`INSERT INTO books (id, author_id, title, price)
 	VALUES (1, 1, 'Cryptonomicon', '(30.00,USD)'),
 	(2, 1, 'Snow Crash', '(20.00,USD)'), (3, 2, 'Ulysses', '(25.00,GBP)')`,
@@ -99,6 +109,11 @@ var setupQueries = []string{
 
 func toPtr[T any](val T) *T {
 	return &val
+}
+
+func getCreatedAt() time.Time {
+	createdAt, _ := time.Parse(time.RFC3339, `2023-01-02T15:04:05Z`)
+	return createdAt.In(time.Local)
 }
 
 var testCases = []struct {
@@ -145,6 +160,9 @@ var testCases = []struct {
 					},
 				},
 			},
+			Timestamps: Timestamps{
+				CreatedAt: getCreatedAt(),
+			},
 		},
 	},
 	{
@@ -185,6 +203,9 @@ var testCases = []struct {
 						},
 					},
 				},
+				Timestamps: Timestamps{
+					CreatedAt: getCreatedAt(),
+				},
 			},
 			{
 				ID:         2,
@@ -205,6 +226,9 @@ var testCases = []struct {
 							Currency: "GBP",
 						},
 					},
+				},
+				Timestamps: Timestamps{
+					CreatedAt: getCreatedAt(),
 				},
 			},
 		},
@@ -263,6 +287,9 @@ var testCases = []struct {
 						},
 					},
 				},
+				Timestamps: Timestamps{
+					CreatedAt: getCreatedAt(),
+				},
 			},
 			{
 				ID:         2,
@@ -293,6 +320,9 @@ var testCases = []struct {
 							},
 						},
 					},
+				},
+				Timestamps: Timestamps{
+					CreatedAt: getCreatedAt(),
 				},
 			},
 		},
