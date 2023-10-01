@@ -63,7 +63,11 @@ func buildHelper(fieldMap fieldMapType, path []string) {
 	}
 
 	if parentVal.Kind() == reflect.Slice {
-		parentVal.Set(reflect.Append(parentVal, targetVal))
+		if parentField.Flat {
+			parentVal.Set(targetVal)
+		} else {
+			parentVal.Set(reflect.Append(parentVal, targetVal))
+		}
 	} else if parentVal.Kind() == reflect.Pointer &&
 		parentVal.Elem().Kind() != reflect.Slice {
 		if targetVal.Kind() == reflect.Pointer {

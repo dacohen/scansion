@@ -70,7 +70,7 @@ func (s *SqlScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
 		}
 
 		targetType := fieldEntry.Type
-		if fieldEntry.Optional {
+		if fieldEntry.Optional && targetType.Kind() != reflect.Pointer {
 			targetType = reflect.PointerTo(targetType)
 		}
 
@@ -95,7 +95,8 @@ func (s *SqlScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
 
 		targetVal := reflect.ValueOf(t).Elem()
 		currentField := fields[idx]
-		if currentField.Optional {
+		if currentField.Optional && targetVal.Kind() == reflect.Pointer &&
+			currentField.Value.Kind() != reflect.Pointer {
 			if targetVal.IsNil() {
 				continue
 			}

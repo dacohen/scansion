@@ -23,6 +23,7 @@ type fieldMapEntry struct {
 	Value     reflect.Value
 	StructIdx []int
 	Optional  bool
+	Flat      bool
 }
 
 type fieldMapType map[string]fieldMapEntry
@@ -76,7 +77,8 @@ func getFieldMapHelper(s interface{}, path []string, idxPath []int, visited []re
 		}
 
 		scannable := structField.Type.Implements(reflect.TypeOf(new(sql.Scanner)).Elem())
-		canRecurse := !scannable && !isBuiltinStruct(structField.Type) && !slices.Contains(extraOptions, dbTagOptionFlat)
+		isFlat := slices.Contains(extraOptions, dbTagOptionFlat)
+		canRecurse := !scannable && !isFlat && !isBuiltinStruct(structField.Type)
 
 		if canRecurse {
 			if structField.Type.Kind() == reflect.Slice {
@@ -139,6 +141,7 @@ func getFieldMapHelper(s interface{}, path []string, idxPath []int, visited []re
 			Value:     sValue.Field(i),
 			StructIdx: append(idxPath, i),
 			Optional:  optional,
+			Flat:      isFlat,
 		}
 	}
 
