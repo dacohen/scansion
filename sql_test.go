@@ -2,12 +2,15 @@ package scansion_test
 
 import (
 	"database/sql"
+	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/dacohen/scansion"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setupSqlDb(t *testing.T, queries []string, tx *sql.Tx) {
@@ -15,7 +18,7 @@ func setupSqlDb(t *testing.T, queries []string, tx *sql.Tx) {
 
 	for _, query := range queries {
 		_, err := tx.Exec(query)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 }
 
@@ -28,30 +31,28 @@ func TestSqlScan(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			db, err := sql.Open("pgx", dbUrl)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			defer db.Close()
 
 			tx, err := db.Begin()
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			defer tx.Rollback()
 
 			setupSqlDb(t, setupQueries, tx)
 
 			rows, err := tx.Query(testCase.query)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			scanner := scansion.NewSqlScanner(rows)
-			if testCase.manyRows {
-				var target []Author
-				err = scanner.Scan(&target)
-				assert.NoError(t, err)
-				assert.EqualValues(t, testCase.expected, target)
-			} else {
-				var target Author
-				err = scanner.Scan(&target)
-				assert.NoError(t, err)
-				assert.EqualValues(t, testCase.expected, target)
-			}
+
+			target := reflect.New(testCase.targetType).Interface()
+			err = scanner.Scan(target)
+			require.NoError(t, err)
+			expectedJson, err := json.MarshalIndent(testCase.expected, "", "  ")
+			require.NoError(t, err)
+			actualJson, err := json.MarshalIndent(target, "", "  ")
+			require.NoError(t, err)
+			assert.Equal(t, string(expectedJson), string(actualJson))
 		})
 	}
 }

@@ -28,7 +28,7 @@ type fieldMapEntry struct {
 
 type fieldMapType map[string]fieldMapEntry
 
-func getFieldMap(s interface{}) (fieldMapType, error) {
+func getFieldMap(s any) (fieldMapType, error) {
 	sVal := reflect.ValueOf(s)
 	sType := reflect.TypeOf(s)
 	if sType.Kind() != reflect.Pointer && sType.Elem().Kind() != reflect.Struct {
@@ -50,7 +50,7 @@ func getFieldMap(s interface{}) (fieldMapType, error) {
 	return fieldMap, nil
 }
 
-func getFieldMapHelper(s interface{}, path []string, idxPath []int, visited []reflect.Type, optional bool) (fieldMapType, error) {
+func getFieldMapHelper(s any, path []string, idxPath []int, visited []reflect.Type, optional bool) (fieldMapType, error) {
 	fieldMap := make(fieldMapType)
 
 	sType := reflect.TypeOf(s).Elem()
@@ -127,6 +127,26 @@ func getFieldMapHelper(s interface{}, path []string, idxPath []int, visited []re
 					path,
 					append(idxPath, i),
 					visited,
+					false)
+				if err != nil {
+					return nil, err
+				}
+				maps.Copy(fieldMap, nestedMap)
+
+				// Since this is an embedded struct, we should NOT create an entry in the fieldMap for it
+				continue
+			} else if structField.Type.Kind() == reflect.Struct {
+				visitedType := structField.Type
+
+				if slices.Contains(path, dbFieldName) || slices.Contains(visited, visitedType) {
+					continue
+				}
+
+				nestedMap, err := getFieldMapHelper(
+					reflect.New(visitedType).Interface(),
+					append(path, dbFieldName),
+					idxPath,
+					append(visited, visitedType),
 					false)
 				if err != nil {
 					return nil, err

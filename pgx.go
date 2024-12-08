@@ -23,7 +23,7 @@ func NewPgxScanner(rows pgx.Rows) *PgxScanner {
 // Scan maps the wrapped Rows into the provided interface.
 // Unless exactly one result is expected (e.g. LIMIT 1 is used)
 // a slice is the expected argument.
-func (p *PgxScanner) Scan(v interface{}) error {
+func (p *PgxScanner) Scan(v any) error {
 	defer p.Rows.Close()
 
 	for p.Rows.Next() {
@@ -32,7 +32,7 @@ func (p *PgxScanner) Scan(v interface{}) error {
 			return err
 		}
 
-		if err = p.scanRow(p.Rows.Scan, fieldMap); err != nil {
+		if err = p.scanRow(fieldMap); err != nil {
 			return err
 		}
 
@@ -42,9 +42,9 @@ func (p *PgxScanner) Scan(v interface{}) error {
 	return nil
 }
 
-func (p *PgxScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
+func (p *PgxScanner) scanRow(fieldMap fieldMapType) error {
 	fieldDescriptions := p.Rows.FieldDescriptions()
-	targets := make([]interface{}, len(fieldDescriptions))
+	targets := make([]any, len(fieldDescriptions))
 	fields := make([]fieldMapEntry, len(fieldDescriptions))
 
 	var path []string

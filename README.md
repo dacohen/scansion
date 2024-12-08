@@ -67,7 +67,7 @@ func main() {
     }
     
     var authors []Author
-    scanner := scansion.NewScanner(rows)
+    scanner := scansion.NewPgxScanner(rows)
     err = scanner.Scan(&authors)
     if err != nil {
         log.Fatalf("Error scanning result: %s", err)

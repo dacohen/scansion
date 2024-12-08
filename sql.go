@@ -22,7 +22,7 @@ func NewSqlScanner(rows *sql.Rows) *SqlScanner {
 // Scan maps the wrapped Rows into the provided interface.
 // Unless exactly one result is expected (e.g. LIMIT 1 is used)
 // a slice is the expected argument.
-func (s *SqlScanner) Scan(v interface{}) error {
+func (s *SqlScanner) Scan(v any) error {
 	defer s.Rows.Close()
 
 	for s.Rows.Next() {
@@ -31,7 +31,7 @@ func (s *SqlScanner) Scan(v interface{}) error {
 			return err
 		}
 
-		if err = s.scanRow(s.Rows.Scan, fieldMap); err != nil {
+		if err = s.scanRow(fieldMap); err != nil {
 			return err
 		}
 
@@ -41,12 +41,12 @@ func (s *SqlScanner) Scan(v interface{}) error {
 	return nil
 }
 
-func (s *SqlScanner) scanRow(scan scannerFunc, fieldMap fieldMapType) error {
+func (s *SqlScanner) scanRow(fieldMap fieldMapType) error {
 	columnTypes, err := s.Rows.ColumnTypes()
 	if err != nil {
 		return err
 	}
-	targets := make([]interface{}, len(columnTypes))
+	targets := make([]any, len(columnTypes))
 	fields := make([]fieldMapEntry, len(columnTypes))
 
 	var path []string

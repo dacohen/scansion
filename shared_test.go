@@ -2,6 +2,7 @@ package scansion_test
 
 import (
 	"errors"
+	"reflect"
 	"regexp"
 	"time"
 )
@@ -51,8 +52,9 @@ type Book struct {
 	ID       int64     `db:"id,pk"`
 	AuthorID int64     `db:"author_id"`
 	Title    string    `db:"title"`
-	Price    MoneyType `db:"price"`
+	Price    MoneyType `db:"price,flat"`
 
+	Author      Author      `db:"authors"`
 	Bookshelves []Bookshelf `db:"bookshelves"`
 }
 
@@ -117,10 +119,10 @@ func getCreatedAt() time.Time {
 }
 
 var testCases = []struct {
-	name     string
-	query    string
-	manyRows bool
-	expected interface{}
+	name       string
+	query      string
+	targetType reflect.Type
+	expected   any
 }{
 	{
 		name: "single_root_row",
@@ -135,7 +137,7 @@ var testCases = []struct {
 		LEFT JOIN cities ON authors.hometown_id = cities.id
 		WHERE authors.id = 1
 		ORDER BY authors.id ASC`,
-		manyRows: false,
+		targetType: reflect.TypeOf(Author{}),
 		expected: Author{
 			ID:        1,
 			Name:      "Neal Stephenson",
@@ -177,8 +179,8 @@ var testCases = []struct {
 		JOIN books ON books.author_id = authors.id
 		LEFT JOIN cities ON authors.hometown_id = cities.id
 		ORDER BY authors.id ASC`,
-		manyRows: true,
-		expected: []Author{
+		targetType: reflect.TypeOf([]Author{}),
+		expected: &[]Author{
 			{
 				ID:        1,
 				Name:      "Neal Stephenson",
@@ -249,8 +251,8 @@ var testCases = []struct {
 		JOIN books_bookshelves bbs ON bbs.book_id = books.id
 		JOIN bookshelves ON bbs.bookshelf_id = bookshelves.id
 		ORDER BY authors.id ASC`,
-		manyRows: true,
-		expected: []Author{
+		targetType: reflect.TypeOf([]Author{}),
+		expected: &[]Author{
 			{
 				ID:        1,
 				Name:      "Neal Stephenson",
@@ -323,6 +325,67 @@ var testCases = []struct {
 				},
 				Timestamps: Timestamps{
 					CreatedAt: getCreatedAt(),
+				},
+			},
+		},
+	},
+	{
+		name: "by_book",
+		query: `SELECT books.*, 0 AS "scan:authors", authors.*
+		FROM books
+		JOIN authors ON books.author_id = authors.id
+		ORDER BY books.id ASC`,
+		targetType: reflect.TypeOf([]Book{}),
+		expected: []Book{
+			{
+				ID:       1,
+				AuthorID: 1,
+				Title:    "Cryptonomicon",
+				Price: MoneyType{
+					Number:   "30.00",
+					Currency: "USD",
+				},
+				Author: Author{
+					ID:        1,
+					Name:      "Neal Stephenson",
+					Publisher: toPtr("HarperCollins"),
+					Timestamps: Timestamps{
+						CreatedAt: getCreatedAt(),
+					},
+				},
+			},
+			{
+				ID:       2,
+				AuthorID: 1,
+				Title:    "Snow Crash",
+				Price: MoneyType{
+					Number:   "20.00",
+					Currency: "USD",
+				},
+				Author: Author{
+					ID:        1,
+					Name:      "Neal Stephenson",
+					Publisher: toPtr("HarperCollins"),
+					Timestamps: Timestamps{
+						CreatedAt: getCreatedAt(),
+					},
+				},
+			},
+			{
+				ID:       3,
+				AuthorID: 2,
+				Title:    "Ulysses",
+				Price: MoneyType{
+					Number:   "25.00",
+					Currency: "GBP",
+				},
+				Author: Author{
+					ID:         2,
+					Name:       "James Joyce",
+					HometownID: toPtr(int64(1)),
+					Timestamps: Timestamps{
+						CreatedAt: getCreatedAt(),
+					},
 				},
 			},
 		},

@@ -4,7 +4,7 @@ package scansion
 // Scanner is generic interface for scanning from a DB.
 // All supported library-specific scanners implement this.
 type Scanner interface {
-	Scan(v interface{}) error
+	Scan(v any) error
 }
 
-type scannerFunc func(i ...interface{}) error
+type scannerFunc func(i ...any) error
