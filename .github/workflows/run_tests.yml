@@ -3,11 +3,11 @@ on: [push]
 jobs:
   test:
     runs-on: ubuntu-latest
-    container: golang:1.21
+    container: golang:1.23
 
     strategy:
       matrix:
-        postgres_version: [14, 15, 16]
+        postgres_version: [14, 15, 16, 17]
 
     services:
       postgres:
