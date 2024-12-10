@@ -23,8 +23,15 @@ func NewPgxScanner(rows pgx.Rows) *PgxScanner {
 // Scan maps the wrapped Rows into the provided interface.
 // Unless exactly one result is expected (e.g. LIMIT 1 is used)
 // a slice is the expected argument.
-func (p *PgxScanner) Scan(v any) error {
-	defer p.Rows.Close()
+func (p *PgxScanner) Scan(v any) (err error) {
+	var rowCount int
+
+	defer func() {
+		p.Rows.Close()
+		if err == nil && rowCount == 0 {
+			err = pgx.ErrNoRows
+		}
+	}()
 
 	for p.Rows.Next() {
 		fieldMap, err := getFieldMap(v)
@@ -37,6 +44,7 @@ func (p *PgxScanner) Scan(v any) error {
 		}
 
 		buildHelper(fieldMap, nil)
+		rowCount++
 	}
 
 	return nil

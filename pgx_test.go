@@ -44,10 +44,8 @@ func TestPgxScan(t *testing.T) {
 			rows, err := tx.Query(ctx, testCase.query)
 			require.NoError(t, err)
 
-			scanner := scansion.NewPgxScanner(rows)
-
 			target := reflect.New(testCase.targetType).Interface()
-			err = scanner.Scan(target)
+			err = scansion.NewPgxScanner(rows).Scan(target)
 			require.NoError(t, err)
 			expectedJson, err := json.MarshalIndent(testCase.expected, "", "  ")
 			require.NoError(t, err)
@@ -56,4 +54,24 @@ func TestPgxScan(t *testing.T) {
 			assert.Equal(t, string(expectedJson), string(actualJson))
 		})
 	}
+
+	t.Run("no_rows", func(t *testing.T) {
+		ctx := context.Background()
+		db, err := pgx.Connect(ctx, dbUrl)
+		require.NoError(t, err)
+		defer db.Close(ctx)
+
+		tx, err := db.Begin(ctx)
+		require.NoError(t, err)
+		defer tx.Rollback(ctx)
+
+		setupPgxDB(ctx, t, setupQueries, tx)
+
+		rows, err := tx.Query(ctx, "SELECT * FROM books WHERE 1 = 0 LIMIT 1")
+		require.NoError(t, err)
+
+		var book Book
+		err = scansion.NewPgxScanner(rows).Scan(&book)
+		require.ErrorIs(t, err, pgx.ErrNoRows)
+	})
 }
