@@ -95,7 +95,7 @@ func getFieldMapHelper(s any, path []string, idxPath []int, visited []reflect.Ty
 					append(path, dbFieldName),
 					idxPath,
 					append(visited, visitedType),
-					optional)
+					true)
 				if err != nil {
 					return nil, err
 				}
