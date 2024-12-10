@@ -22,8 +22,15 @@ func NewSqlScanner(rows *sql.Rows) *SqlScanner {
 // Scan maps the wrapped Rows into the provided interface.
 // Unless exactly one result is expected (e.g. LIMIT 1 is used)
 // a slice is the expected argument.
-func (s *SqlScanner) Scan(v any) error {
-	defer s.Rows.Close()
+func (s *SqlScanner) Scan(v any) (err error) {
+	var rowCount int
+
+	defer func() {
+		s.Rows.Close()
+		if err == nil && rowCount == 0 {
+			err = sql.ErrNoRows
+		}
+	}()
 
 	for s.Rows.Next() {
 		fieldMap, err := getFieldMap(v)
@@ -36,6 +43,7 @@ func (s *SqlScanner) Scan(v any) error {
 		}
 
 		buildHelper(fieldMap, nil)
+		rowCount++
 	}
 
 	return nil

@@ -43,10 +43,8 @@ func TestSqlScan(t *testing.T) {
 			rows, err := tx.Query(testCase.query)
 			require.NoError(t, err)
 
-			scanner := scansion.NewSqlScanner(rows)
-
 			target := reflect.New(testCase.targetType).Interface()
-			err = scanner.Scan(target)
+			err = scansion.NewSqlScanner(rows).Scan(target)
 			require.NoError(t, err)
 			expectedJson, err := json.MarshalIndent(testCase.expected, "", "  ")
 			require.NoError(t, err)
@@ -55,4 +53,23 @@ func TestSqlScan(t *testing.T) {
 			assert.Equal(t, string(expectedJson), string(actualJson))
 		})
 	}
+
+	t.Run("no_rows", func(t *testing.T) {
+		db, err := sql.Open("pgx", dbUrl)
+		require.NoError(t, err)
+		defer db.Close()
+
+		tx, err := db.Begin()
+		require.NoError(t, err)
+		defer tx.Rollback()
+
+		setupSqlDb(t, setupQueries, tx)
+
+		rows, err := tx.Query("SELECT * FROM books WHERE 1 = 0 LIMIT 1")
+		require.NoError(t, err)
+
+		var book Book
+		err = scansion.NewSqlScanner(rows).Scan(&book)
+		require.ErrorIs(t, err, sql.ErrNoRows)
+	})
 }
