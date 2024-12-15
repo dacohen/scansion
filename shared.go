@@ -115,12 +115,40 @@ func sliceMerge(slice, elem reflect.Value) error {
 						return err
 					}
 				}
+			} else if elemField.Kind() == reflect.Struct {
+				if err := structMerge(sliceValField, elemField); err != nil {
+					return nil
+				}
 			}
 		}
 	}
 
 	if slice.Len() == 0 {
 		slice.Set(reflect.Append(slice, elem))
+	}
+
+	return nil
+}
+
+func structMerge(origStruct, newStruct reflect.Value) error {
+	if origStruct.Kind() != reflect.Struct {
+		return errors.New("first argument must be a struct")
+	}
+
+	for fieldIdx := 0; fieldIdx < origStruct.NumField(); fieldIdx++ {
+		sliceValField := origStruct.Field(fieldIdx)
+		elemField := newStruct.Field(fieldIdx)
+		if sliceValField.Kind() == reflect.Struct {
+			if err := structMerge(sliceValField, elemField); err != nil {
+				return err
+			}
+		} else if sliceValField.Kind() == reflect.Slice {
+			for elemIdx := 0; elemIdx < elemField.Len(); elemIdx++ {
+				if err := sliceMerge(sliceValField, elemField.Index(elemIdx)); err != nil {
+					return err
+				}
+			}
+		}
 	}
 
 	return nil
