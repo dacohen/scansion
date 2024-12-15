@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func buildHelper(fieldMap fieldMapType, path []string) {
+func buildHelper(fieldMap fieldMapType, path []string) error {
 	parentName := strings.Join(path, ".")
 	parentField := fieldMap[parentName]
 
@@ -38,7 +38,9 @@ func buildHelper(fieldMap fieldMapType, path []string) {
 			childField.Value.Set(reflect.New(childField.Type.Elem()))
 		}
 
-		buildHelper(fieldMap, newPath)
+		if err := buildHelper(fieldMap, newPath); err != nil {
+			return err
+		}
 
 		if childField.Value.IsValid() {
 			targetVal.FieldByIndex(childField.StructIdx).Set(childField.Value)
@@ -54,12 +56,14 @@ func buildHelper(fieldMap fieldMapType, path []string) {
 		(targetVal.Kind() == reflect.Pointer && targetVal.Elem().IsZero()) {
 		// If the target is nil, clean up the empty parent element as well
 		parentVal.Set(reflect.Zero(parentVal.Type()))
-		return
+		return nil
 	}
 
 	if sliceTargetVal.IsValid() && targetVal.IsValid() {
 		// Recursively merge the slices
-		sliceMerge(sliceTargetVal, targetVal)
+		if err := sliceMerge(sliceTargetVal, targetVal); err != nil {
+			return err
+		}
 	}
 
 	if parentVal.Kind() == reflect.Slice {
@@ -75,6 +79,8 @@ func buildHelper(fieldMap fieldMapType, path []string) {
 		}
 		parentVal.Elem().Set(targetVal)
 	}
+
+	return nil
 }
 
 func sliceMerge(slice, elem reflect.Value) error {
@@ -115,12 +121,44 @@ func sliceMerge(slice, elem reflect.Value) error {
 						return err
 					}
 				}
+			} else if elemField.Kind() == reflect.Struct {
+				if err := structMerge(sliceValField, elemField); err != nil {
+					return err
+				}
 			}
 		}
 	}
 
 	if slice.Len() == 0 {
 		slice.Set(reflect.Append(slice, elem))
+	}
+
+	return nil
+}
+
+func structMerge(origStruct, newStruct reflect.Value) error {
+	if origStruct.Kind() != reflect.Struct {
+		return errors.New("first argument must be a struct")
+	}
+
+	if origStruct.Type() != newStruct.Type() {
+		return errors.New("both values must have the same primitve type")
+	}
+
+	for fieldIdx := 0; fieldIdx < origStruct.NumField(); fieldIdx++ {
+		sliceValField := origStruct.Field(fieldIdx)
+		elemField := newStruct.Field(fieldIdx)
+		if sliceValField.Kind() == reflect.Struct {
+			if err := structMerge(sliceValField, elemField); err != nil {
+				return err
+			}
+		} else if sliceValField.Kind() == reflect.Slice {
+			for elemIdx := 0; elemIdx < elemField.Len(); elemIdx++ {
+				if err := sliceMerge(sliceValField, elemField.Index(elemIdx)); err != nil {
+					return err
+				}
+			}
+		}
 	}
 
 	return nil

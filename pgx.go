@@ -43,7 +43,9 @@ func (p *PgxScanner) Scan(v any) (err error) {
 			return err
 		}
 
-		buildHelper(fieldMap, nil)
+		if err = buildHelper(fieldMap, nil); err != nil {
+			return err
+		}
 		rowCount++
 	}
 
