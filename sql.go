@@ -42,7 +42,9 @@ func (s *SqlScanner) Scan(v any) (err error) {
 			return err
 		}
 
-		buildHelper(fieldMap, nil)
+		if err = buildResult(v, fieldMap); err != nil {
+			return err
+		}
 		rowCount++
 	}
 
@@ -56,6 +58,7 @@ func (s *SqlScanner) scanRow(fieldMap fieldMapType) error {
 	}
 	targets := make([]any, len(columnTypes))
 	fields := make([]fieldMapEntry, len(columnTypes))
+	scopedNames := make([]string, len(columnTypes))
 
 	var path []string
 	var scanColIdxs []int
@@ -84,6 +87,7 @@ func (s *SqlScanner) scanRow(fieldMap fieldMapType) error {
 
 		targets[i] = reflect.New(targetType).Interface()
 		fields[i] = fieldEntry
+		scopedNames[i] = scopedName
 	}
 
 	if err := s.Rows.Scan(targets...); err != nil {
@@ -104,16 +108,15 @@ func (s *SqlScanner) scanRow(fieldMap fieldMapType) error {
 		targetVal := reflect.ValueOf(t).Elem()
 		currentField := fields[idx]
 		if currentField.Optional && targetVal.Kind() == reflect.Pointer &&
-			currentField.Value.Kind() != reflect.Pointer {
+			currentField.Type.Kind() != reflect.Pointer {
 			if targetVal.IsNil() {
 				continue
 			}
 			targetVal = targetVal.Elem()
 		}
 
-		if currentField.Value.IsZero() {
-			currentField.Value.Set(targetVal)
-		}
+		currentField.ScannedValue = targetVal
+		fieldMap[scopedNames[idx]] = currentField
 	}
 
 	return nil

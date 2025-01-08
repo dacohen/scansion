@@ -19,28 +19,26 @@ const (
 )
 
 type fieldMapEntry struct {
-	Type      reflect.Type
-	Value     reflect.Value
-	StructIdx []int
-	Optional  bool
-	Flat      bool
+	Type         reflect.Type
+	ScannedValue reflect.Value
+	StructIdx    []int
+	Optional     bool
+	Flat         bool
 }
 
 type fieldMapType map[string]fieldMapEntry
 
-func getFieldMap(s any) (fieldMapType, error) {
-	sVal := reflect.ValueOf(s)
-	sType := reflect.TypeOf(s)
-	if sType.Kind() != reflect.Pointer && sType.Elem().Kind() != reflect.Struct {
-		return nil, errors.New("input is not a struct pointer")
+func getFieldMap(v any) (fieldMapType, error) {
+	vType := reflect.TypeOf(v)
+	if vType.Kind() != reflect.Pointer || (vType.Elem().Kind() != reflect.Struct && vType.Elem().Kind() != reflect.Slice) {
+		return nil, errors.New("input is not a struct or slice pointer")
 	}
 
 	rootMapEntry := fieldMapEntry{
-		Type:  sType,
-		Value: sVal,
+		Type: vType,
 	}
 
-	fieldMap, err := getFieldMapHelper(s, nil, nil, []reflect.Type{sType}, false)
+	fieldMap, err := getFieldMapHelper(vType.Elem(), nil, nil, []reflect.Type{vType}, false)
 	if err != nil {
 		return fieldMapType{}, err
 	}
@@ -50,18 +48,15 @@ func getFieldMap(s any) (fieldMapType, error) {
 	return fieldMap, nil
 }
 
-func getFieldMapHelper(s any, path []string, idxPath []int, visited []reflect.Type, optional bool) (fieldMapType, error) {
+func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited []reflect.Type, optional bool) (fieldMapType, error) {
 	fieldMap := make(fieldMapType)
 
-	sType := reflect.TypeOf(s).Elem()
-	sValue := reflect.ValueOf(s).Elem()
-	if sType.Kind() == reflect.Slice {
-		sType = sType.Elem()
-		sValue = reflect.New(sType).Elem()
+	if vType.Kind() == reflect.Slice {
+		vType = vType.Elem()
 	}
 
-	for i := 0; i < sType.NumField(); i++ {
-		structField := sType.Field(i)
+	for i := 0; i < vType.NumField(); i++ {
+		structField := vType.Field(i)
 		fullDbTag := structField.Tag.Get(dbTagName)
 		if (fullDbTag == "" && !structField.Anonymous) || fullDbTag == dbTagIgnore {
 			continue
@@ -82,18 +77,15 @@ func getFieldMapHelper(s any, path []string, idxPath []int, visited []reflect.Ty
 
 		if canRecurse {
 			if structField.Type.Kind() == reflect.Slice {
-				visitedType := structField.Type
-				if visitedType.Kind() == reflect.Slice || visitedType.Kind() == reflect.Pointer {
-					visitedType = visitedType.Elem()
-				}
+				visitedType := structField.Type.Elem()
 				if slices.Contains(path, dbFieldName) || slices.Contains(visited, visitedType) {
 					continue
 				}
 
 				nestedMap, err := getFieldMapHelper(
-					reflect.New(visitedType).Interface(),
+					visitedType,
 					append(path, dbFieldName),
-					idxPath,
+					nil,
 					append(visited, visitedType),
 					true)
 				if err != nil {
@@ -109,9 +101,9 @@ func getFieldMapHelper(s any, path []string, idxPath []int, visited []reflect.Ty
 				}
 
 				nestedMap, err := getFieldMapHelper(
-					reflect.New(visitedType).Interface(),
+					visitedType,
 					append(path, dbFieldName),
-					idxPath,
+					nil,
 					append(visited, visitedType),
 					true)
 				if err != nil {
@@ -123,9 +115,9 @@ func getFieldMapHelper(s any, path []string, idxPath []int, visited []reflect.Ty
 				visitedType := structField.Type
 
 				nestedMap, err := getFieldMapHelper(
-					reflect.New(visitedType).Interface(),
+					visitedType,
 					path,
-					append(idxPath, i),
+					[]int{i},
 					visited,
 					false)
 				if err != nil {
@@ -143,9 +135,9 @@ func getFieldMapHelper(s any, path []string, idxPath []int, visited []reflect.Ty
 				}
 
 				nestedMap, err := getFieldMapHelper(
-					reflect.New(visitedType).Interface(),
+					visitedType,
 					append(path, dbFieldName),
-					idxPath,
+					nil,
 					append(visited, visitedType),
 					false)
 				if err != nil {
@@ -158,30 +150,29 @@ func getFieldMapHelper(s any, path []string, idxPath []int, visited []reflect.Ty
 		scopedName := strings.Join(append(path, dbFieldName), ".")
 		fieldMap[scopedName] = fieldMapEntry{
 			Type:      structField.Type,
-			Value:     sValue.Field(i),
 			StructIdx: append(idxPath, i),
 			Optional:  optional,
-			Flat:      isFlat,
+			Flat:      !canRecurse,
 		}
 	}
 
 	return fieldMap, nil
 }
 
-func getPkValue(s reflect.Value) (reflect.Value, error) {
+func getPkValue(v reflect.Value) (reflect.Value, error) {
 	var pkValue reflect.Value
 
-	if s.Kind() == reflect.Pointer {
-		s = s.Elem()
+	if v.Kind() == reflect.Pointer {
+		v = v.Elem()
 	}
 
-	if s.Kind() != reflect.Struct {
+	if v.Kind() != reflect.Struct {
 		return reflect.Value{}, errors.New("input must be of type struct")
 	}
 
-	for i := 0; i < s.NumField(); i++ {
-		fieldType := s.Type().Field(i)
-		fieldVal := s.Field(i)
+	for i := 0; i < v.NumField(); i++ {
+		fieldType := v.Type().Field(i)
+		fieldVal := v.Field(i)
 		fullDbTag := fieldType.Tag.Get(dbTagName)
 		if fullDbTag == "" {
 			continue
