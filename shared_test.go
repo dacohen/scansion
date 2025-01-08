@@ -12,12 +12,21 @@ type Timestamps struct {
 	UpdatedAt *time.Time `db:"updated_at"`
 }
 
+type Website struct {
+	ID  int64  `db:"id,pk"`
+	URL string `db:"url"`
+
+	Author Author `db:"author"`
+}
+
 type Author struct {
-	ID         int64   `db:"id,pk"`
-	Name       string  `db:"name"`
-	Publisher  *string `db:"publisher"`
-	HometownID *int64  `db:"hometown_id"`
-	Hometown   *City   `db:"hometown"`
+	ID         int64    `db:"id,pk"`
+	Name       string   `db:"name"`
+	Publisher  *string  `db:"publisher"`
+	HometownID *int64   `db:"hometown_id"`
+	Hometown   *City    `db:"hometown"`
+	WebsiteID  *int64   `db:"website_id"`
+	Website    *Website `db:"website"`
 
 	Books []Book `db:"books"`
 
@@ -75,11 +84,16 @@ var setupQueries = []string{
 		name TEXT NOT NULL,
 		country TEXT NOT NULL
 	)`,
+	`CREATE TABLE websites (
+		id BIGINT PRIMARY KEY,
+		url TEXT NOT NULL
+	)`,
 	`CREATE TABLE authors (
 		id BIGINT PRIMARY KEY,
 		name TEXT NOT NULL,
 		publisher TEXT,
 		hometown_id BIGINT REFERENCES cities (id),
+		website_id BIGINT REFERENCES websites (id),
 		created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMPTZ
 	)`,
@@ -99,9 +113,10 @@ var setupQueries = []string{
 	)`,
 	`INSERT INTO cities (id, name, country) VALUES
 	(1, 'Dublin', 'Ireland')`,
-	`INSERT INTO authors (id, name, publisher, hometown_id, created_at)
-	VALUES (1, 'Neal Stephenson', 'HarperCollins', NULL, '2023-01-02 15:04:05 UTC'),
-	(2, 'James Joyce', NULL, 1, '2023-01-02 15:04:05 UTC')`,
+	`INSERT INTO websites (id, url) VALUES (1, 'https://nealstephenson.com/')`,
+	`INSERT INTO authors (id, name, publisher, hometown_id, website_id, created_at)
+	VALUES (1, 'Neal Stephenson', 'HarperCollins', NULL, 1, '2023-01-02 15:04:05 UTC'),
+	(2, 'James Joyce', NULL, 1, NULL, '2023-01-02 15:04:05 UTC')`,
 	`INSERT INTO books (id, author_id, title, price)
 	VALUES (1, 1, 'Cryptonomicon', '(30.00,USD)'),
 	(2, 1, 'Snow Crash', '(20.00,USD)'), (3, 2, 'Ulysses', '(25.00,GBP)')`,
@@ -131,10 +146,13 @@ var testCases = []struct {
 			0 AS "scan:books",
 			books.*,
 			0 AS "scan:hometown",
-			cities.*
+			cities.*,
+			0 AS "scan:website",
+			websites.*
 		FROM authors
 		JOIN books ON books.author_id = authors.id
 		LEFT JOIN cities ON authors.hometown_id = cities.id
+		LEFT JOIN websites ON authors.website_id = websites.id
 		WHERE authors.id = 1
 		ORDER BY authors.id ASC`,
 		targetType: reflect.TypeOf(Author{}),
@@ -142,6 +160,11 @@ var testCases = []struct {
 			ID:        1,
 			Name:      "Neal Stephenson",
 			Publisher: toPtr("HarperCollins"),
+			WebsiteID: toPtr(int64(1)),
+			Website: &Website{
+				ID:  1,
+				URL: "https://nealstephenson.com/",
+			},
 			Books: []Book{
 				{
 					ID:       1,
@@ -174,10 +197,13 @@ var testCases = []struct {
 			0 AS "scan:books",
 			books.*,
 			0 AS "scan:hometown",
-			cities.*
+			cities.*,
+			0 AS "scan:website",
+			websites.*
 		FROM authors
 		JOIN books ON books.author_id = authors.id
 		LEFT JOIN cities ON authors.hometown_id = cities.id
+		LEFT JOIN websites ON authors.website_id = websites.id
 		ORDER BY authors.id ASC`,
 		targetType: reflect.TypeOf([]Author{}),
 		expected: &[]Author{
@@ -185,6 +211,11 @@ var testCases = []struct {
 				ID:        1,
 				Name:      "Neal Stephenson",
 				Publisher: toPtr("HarperCollins"),
+				WebsiteID: toPtr(int64(1)),
+				Website: &Website{
+					ID:  1,
+					URL: "https://nealstephenson.com/",
+				},
 				Books: []Book{
 					{
 						ID:       1,
@@ -244,9 +275,12 @@ var testCases = []struct {
 			0 AS "scan:books.bookshelves",
 			bookshelves.*,
 			0 AS "scan:hometown",
-			cities.*
+			cities.*,
+			0 AS "scan:website",
+			websites.*
 		FROM authors
 		LEFT JOIN cities ON authors.hometown_id = cities.id
+		LEFT JOIN websites ON authors.website_id = websites.id
 		JOIN books ON books.author_id = authors.id
 		JOIN books_bookshelves bbs ON bbs.book_id = books.id
 		JOIN bookshelves ON bbs.bookshelf_id = bookshelves.id
@@ -257,6 +291,11 @@ var testCases = []struct {
 				ID:        1,
 				Name:      "Neal Stephenson",
 				Publisher: toPtr("HarperCollins"),
+				WebsiteID: toPtr(int64(1)),
+				Website: &Website{
+					ID:  1,
+					URL: "https://nealstephenson.com/",
+				},
 				Books: []Book{
 					{
 						ID:       1,
@@ -331,9 +370,10 @@ var testCases = []struct {
 	},
 	{
 		name: "by_book",
-		query: `SELECT books.*, 0 AS "scan:authors", authors.*
+		query: `SELECT books.*, 0 AS "scan:authors", authors.*, 0 AS "scan:authors.website", websites.*
 		FROM books
 		JOIN authors ON books.author_id = authors.id
+		LEFT JOIN websites ON authors.website_id = websites.id
 		ORDER BY books.id ASC`,
 		targetType: reflect.TypeOf([]Book{}),
 		expected: []Book{
@@ -349,6 +389,11 @@ var testCases = []struct {
 					ID:        1,
 					Name:      "Neal Stephenson",
 					Publisher: toPtr("HarperCollins"),
+					WebsiteID: toPtr(int64(1)),
+					Website: &Website{
+						ID:  1,
+						URL: "https://nealstephenson.com/",
+					},
 					Timestamps: Timestamps{
 						CreatedAt: getCreatedAt(),
 					},
@@ -366,6 +411,11 @@ var testCases = []struct {
 					ID:        1,
 					Name:      "Neal Stephenson",
 					Publisher: toPtr("HarperCollins"),
+					WebsiteID: toPtr(int64(1)),
+					Website: &Website{
+						ID:  1,
+						URL: "https://nealstephenson.com/",
+					},
 					Timestamps: Timestamps{
 						CreatedAt: getCreatedAt(),
 					},
@@ -386,6 +436,52 @@ var testCases = []struct {
 					Timestamps: Timestamps{
 						CreatedAt: getCreatedAt(),
 					},
+				},
+			},
+		},
+	},
+	{
+		name: "recursive_slices",
+		query: `SELECT websites.*,
+			0 AS "scan:author",
+			authors.*,
+			0 AS "scan:author.books",
+			books.*
+		FROM websites
+		JOIN authors ON authors.website_id = websites.id
+		JOIN books ON books.author_id = authors.id
+		WHERE websites.id = 1`,
+		targetType: reflect.TypeOf(Website{}),
+		expected: &Website{
+			ID:  1,
+			URL: "https://nealstephenson.com/",
+			Author: Author{
+				ID:        1,
+				Name:      "Neal Stephenson",
+				Publisher: toPtr("HarperCollins"),
+				WebsiteID: toPtr(int64(1)),
+				Books: []Book{
+					{
+						ID:       1,
+						AuthorID: 1,
+						Title:    "Cryptonomicon",
+						Price: MoneyType{
+							Number:   "30.00",
+							Currency: "USD",
+						},
+					},
+					{
+						ID:       2,
+						AuthorID: 1,
+						Title:    "Snow Crash",
+						Price: MoneyType{
+							Number:   "20.00",
+							Currency: "USD",
+						},
+					},
+				},
+				Timestamps: Timestamps{
+					CreatedAt: getCreatedAt(),
 				},
 			},
 		},

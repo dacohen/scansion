@@ -33,17 +33,17 @@ func (p *PgxScanner) Scan(v any) (err error) {
 		}
 	}()
 
-	for p.Rows.Next() {
-		fieldMap, err := getFieldMap(v)
-		if err != nil {
-			return err
-		}
+	fieldMap, err := getFieldMap(v)
+	if err != nil {
+		return err
+	}
 
+	for p.Rows.Next() {
 		if err = p.scanRow(fieldMap); err != nil {
 			return err
 		}
 
-		if err = buildHelper(fieldMap, nil); err != nil {
+		if err = buildResult(v, fieldMap); err != nil {
 			return err
 		}
 		rowCount++
@@ -56,6 +56,7 @@ func (p *PgxScanner) scanRow(fieldMap fieldMapType) error {
 	fieldDescriptions := p.Rows.FieldDescriptions()
 	targets := make([]any, len(fieldDescriptions))
 	fields := make([]fieldMapEntry, len(fieldDescriptions))
+	scopedNames := make([]string, len(fieldDescriptions))
 
 	var path []string
 	for i, desc := range fieldDescriptions {
@@ -78,6 +79,7 @@ func (p *PgxScanner) scanRow(fieldMap fieldMapType) error {
 
 		targets[i] = reflect.New(targetType).Interface()
 		fields[i] = fieldEntry
+		scopedNames[i] = scopedName
 	}
 
 	if err := p.Rows.Scan(targets...); err != nil {
@@ -93,16 +95,16 @@ func (p *PgxScanner) scanRow(fieldMap fieldMapType) error {
 		targetVal := reflect.ValueOf(t).Elem()
 		currentField := fields[idx]
 		if currentField.Optional && targetVal.Kind() == reflect.Pointer &&
-			currentField.Value.Kind() != reflect.Pointer {
+			currentField.Type.Kind() != reflect.Pointer {
 			if targetVal.IsNil() {
-				continue
+				targetVal = reflect.Zero(currentField.Type)
+			} else {
+				targetVal = targetVal.Elem()
 			}
-			targetVal = targetVal.Elem()
 		}
 
-		if currentField.Value.IsZero() {
-			currentField.Value.Set(targetVal)
-		}
+		currentField.ScannedValue = targetVal
+		fieldMap[scopedNames[idx]] = currentField
 	}
 
 	return nil

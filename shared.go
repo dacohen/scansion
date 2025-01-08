@@ -2,82 +2,94 @@ package scansion
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 )
 
-func buildHelper(fieldMap fieldMapType, path []string) error {
-	parentName := strings.Join(path, ".")
-	parentField := fieldMap[parentName]
+func buildResult(v any, fieldMap fieldMapType) error {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Pointer {
+		val = val.Elem()
+	}
 
-	children := getChildren(fieldMap, path)
-
-	var sliceTargetVal reflect.Value
-	var targetVal reflect.Value
-	if parentField.Value.Kind() == reflect.Slice {
-		targetVal = reflect.New(parentField.Type.Elem()).Elem()
-	} else if parentField.Value.Kind() == reflect.Pointer {
-		targetVal = parentField.Value.Elem()
-	} else if !parentField.Value.IsValid() {
-		targetVal = reflect.New(parentField.Type).Elem()
+	if val.Kind() == reflect.Slice {
+		sliceElem := reflect.New(val.Type().Elem()).Elem()
+		if err := buildHelper(fieldMap, nil, sliceElem); err != nil {
+			return err
+		}
+		if err := sliceMerge(val, sliceElem); err != nil {
+			return err
+		}
 	} else {
-		targetVal = parentField.Value
+		if err := buildHelper(fieldMap, nil, val); err != nil {
+			return err
+		}
 	}
 
-	if targetVal.Kind() == reflect.Slice {
-		// We'll be working on a single element, so save a reference to the slice for later
-		sliceTargetVal = targetVal
-		targetVal = reflect.New(targetVal.Type().Elem()).Elem()
-	}
+	return nil
+}
 
-	for _, childName := range children {
+func buildHelper(fieldMap fieldMapType, path []string, target reflect.Value) error {
+	for _, childName := range getChildren(fieldMap, path) {
 		newPath := append(path, childName)
-		childField := fieldMap[strings.Join(newPath, ".")]
+		childPath := strings.Join(newPath, ".")
+		childField := fieldMap[childPath]
 
-		if childField.Value.Kind() == reflect.Pointer && childField.Value.IsNil() {
-			childField.Value.Set(reflect.New(childField.Type.Elem()))
+		childType := childField.Type
+		if childType.Kind() == reflect.Pointer {
+			childType = childType.Elem()
 		}
 
-		if err := buildHelper(fieldMap, newPath); err != nil {
+		var childTarget reflect.Value
+		switch childType.Kind() {
+		case reflect.Slice:
+			childTarget = reflect.New(childField.Type.Elem()).Elem()
+		case reflect.Struct:
+			if childField.Flat {
+				childTarget = childField.ScannedValue
+			} else {
+				localTarget := target
+				if localTarget.Kind() == reflect.Pointer {
+					localTarget = localTarget.Elem()
+				}
+
+				if localTarget.IsValid() {
+					childTarget = localTarget.FieldByIndex(childField.StructIdx)
+				}
+			}
+		case reflect.Pointer:
+			fallthrough
+		default:
+			childTarget = childField.ScannedValue
+		}
+
+		if err := buildHelper(fieldMap, newPath, childTarget); err != nil {
 			return err
 		}
 
-		if childField.Value.IsValid() {
-			targetVal.FieldByIndex(childField.StructIdx).Set(childField.Value)
-		}
-	}
+		if childTarget.IsValid() && !childTarget.IsZero() {
+			localTarget := target
+			if localTarget.Kind() == reflect.Pointer {
+				if !localTarget.Elem().IsValid() {
+					localTarget.Set(reflect.New(localTarget.Type().Elem()))
+				}
+				localTarget = localTarget.Elem()
+			}
 
-	if len(children) == 0 {
-		targetVal = fieldMap[parentName].Value
-	}
-
-	parentVal := parentField.Value
-	if !targetVal.IsValid() || targetVal.IsZero() ||
-		(targetVal.Kind() == reflect.Pointer && targetVal.Elem().IsZero()) {
-		// If the target is nil, clean up the empty parent element as well
-		parentVal.Set(reflect.Zero(parentVal.Type()))
-		return nil
-	}
-
-	if sliceTargetVal.IsValid() && targetVal.IsValid() {
-		// Recursively merge the slices
-		if err := sliceMerge(sliceTargetVal, targetVal); err != nil {
-			return err
+			if localTarget.Kind() == reflect.Struct {
+				targetField := localTarget.FieldByIndex(childField.StructIdx)
+				if targetField.Kind() == reflect.Slice {
+					if err := sliceMerge(targetField, childTarget); err != nil {
+						return err
+					}
+				} else {
+					targetField.Set(childTarget)
+				}
+			} else {
+				return fmt.Errorf("unexpected kind: %s", target.Kind())
+			}
 		}
-	}
-
-	if parentVal.Kind() == reflect.Slice {
-		if parentField.Flat {
-			parentVal.Set(targetVal)
-		} else {
-			parentVal.Set(reflect.Append(parentVal, targetVal))
-		}
-	} else if parentVal.Kind() == reflect.Pointer &&
-		parentVal.Elem().Kind() != reflect.Slice {
-		if targetVal.Kind() == reflect.Pointer {
-			targetVal = targetVal.Elem()
-		}
-		parentVal.Elem().Set(targetVal)
 	}
 
 	return nil
