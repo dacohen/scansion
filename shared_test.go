@@ -2,10 +2,44 @@ package scansion_test
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"regexp"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type Array[T any] []T
+
+func (a *Array[T]) Scan(src any) error {
+	m := pgtype.NewMap()
+
+	v := (*[]T)(a)
+
+	t, ok := m.TypeForValue(v)
+	if !ok {
+		return fmt.Errorf("cannot convert to sql.Scanner: cannot find registered type for %T", a)
+	}
+
+	var bufSrc []byte
+	var formatCode int16
+	if src != nil {
+		switch src := src.(type) {
+		case string:
+			bufSrc = []byte(src)
+			formatCode = pgtype.TextFormatCode
+		case []byte:
+			bufSrc = src
+			formatCode = pgtype.BinaryFormatCode
+		default:
+			bufSrc = []byte(fmt.Sprint(bufSrc))
+			formatCode = pgtype.TextFormatCode
+		}
+	}
+
+	return m.Scan(t.OID, formatCode, bufSrc, v)
+}
 
 type Timestamps struct {
 	CreatedAt time.Time  `db:"created_at"`
@@ -20,13 +54,14 @@ type Website struct {
 }
 
 type Author struct {
-	ID         int64    `db:"id,pk"`
-	Name       string   `db:"name"`
-	Publisher  *string  `db:"publisher"`
-	HometownID *int64   `db:"hometown_id"`
-	Hometown   *City    `db:"hometown"`
-	WebsiteID  *int64   `db:"website_id"`
-	Website    *Website `db:"website"`
+	ID         int64         `db:"id,pk"`
+	Name       string        `db:"name"`
+	Publisher  *string       `db:"publisher"`
+	Pseudonyms Array[string] `db:"pseudonyms"`
+	HometownID *int64        `db:"hometown_id"`
+	Hometown   *City         `db:"hometown"`
+	WebsiteID  *int64        `db:"website_id"`
+	Website    *Website      `db:"website"`
 
 	Books []Book `db:"books"`
 
@@ -92,6 +127,7 @@ var setupQueries = []string{
 		id BIGINT PRIMARY KEY,
 		name TEXT NOT NULL,
 		publisher TEXT,
+		pseudonyms TEXT[],
 		hometown_id BIGINT REFERENCES cities (id),
 		website_id BIGINT REFERENCES websites (id),
 		created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -114,9 +150,9 @@ var setupQueries = []string{
 	`INSERT INTO cities (id, name, country) VALUES
 	(1, 'Dublin', 'Ireland')`,
 	`INSERT INTO websites (id, url) VALUES (1, 'https://nealstephenson.com/')`,
-	`INSERT INTO authors (id, name, publisher, hometown_id, website_id, created_at)
-	VALUES (1, 'Neal Stephenson', 'HarperCollins', NULL, 1, '2023-01-02 15:04:05 UTC'),
-	(2, 'James Joyce', NULL, 1, NULL, '2023-01-02 15:04:05 UTC')`,
+	`INSERT INTO authors (id, name, publisher, pseudonyms, hometown_id, website_id, created_at)
+	VALUES (1, 'Neal Stephenson', 'HarperCollins', '{Neal S}', NULL, 1, '2023-01-02 15:04:05 UTC'),
+	(2, 'James Joyce', NULL, '{Jamie J, JJ}', 1, NULL, '2023-01-02 15:04:05 UTC')`,
 	`INSERT INTO books (id, author_id, title, price)
 	VALUES (1, 1, 'Cryptonomicon', '(30.00,USD)'),
 	(2, 1, 'Snow Crash', '(20.00,USD)'), (3, 2, 'Ulysses', '(25.00,GBP)')`,
@@ -157,10 +193,11 @@ var testCases = []struct {
 		ORDER BY authors.id ASC`,
 		targetType: reflect.TypeOf(Author{}),
 		expected: Author{
-			ID:        1,
-			Name:      "Neal Stephenson",
-			Publisher: toPtr("HarperCollins"),
-			WebsiteID: toPtr(int64(1)),
+			ID:         1,
+			Name:       "Neal Stephenson",
+			Publisher:  toPtr("HarperCollins"),
+			Pseudonyms: []string{"Neal S"},
+			WebsiteID:  toPtr(int64(1)),
 			Website: &Website{
 				ID:  1,
 				URL: "https://nealstephenson.com/",
@@ -208,10 +245,11 @@ var testCases = []struct {
 		targetType: reflect.TypeOf([]Author{}),
 		expected: &[]Author{
 			{
-				ID:        1,
-				Name:      "Neal Stephenson",
-				Publisher: toPtr("HarperCollins"),
-				WebsiteID: toPtr(int64(1)),
+				ID:         1,
+				Name:       "Neal Stephenson",
+				Publisher:  toPtr("HarperCollins"),
+				Pseudonyms: []string{"Neal S"},
+				WebsiteID:  toPtr(int64(1)),
 				Website: &Website{
 					ID:  1,
 					URL: "https://nealstephenson.com/",
@@ -243,6 +281,7 @@ var testCases = []struct {
 			{
 				ID:         2,
 				Name:       "James Joyce",
+				Pseudonyms: []string{"Jamie J", "JJ"},
 				HometownID: toPtr(int64(1)),
 				Hometown: &City{
 					ID:      1,
@@ -288,10 +327,11 @@ var testCases = []struct {
 		targetType: reflect.TypeOf([]Author{}),
 		expected: &[]Author{
 			{
-				ID:        1,
-				Name:      "Neal Stephenson",
-				Publisher: toPtr("HarperCollins"),
-				WebsiteID: toPtr(int64(1)),
+				ID:         1,
+				Name:       "Neal Stephenson",
+				Publisher:  toPtr("HarperCollins"),
+				Pseudonyms: []string{"Neal S"},
+				WebsiteID:  toPtr(int64(1)),
 				Website: &Website{
 					ID:  1,
 					URL: "https://nealstephenson.com/",
@@ -335,6 +375,7 @@ var testCases = []struct {
 			{
 				ID:         2,
 				Name:       "James Joyce",
+				Pseudonyms: []string{"Jamie J", "JJ"},
 				HometownID: toPtr(int64(1)),
 				Hometown: &City{
 					ID:      1,
@@ -386,10 +427,11 @@ var testCases = []struct {
 					Currency: "USD",
 				},
 				Author: Author{
-					ID:        1,
-					Name:      "Neal Stephenson",
-					Publisher: toPtr("HarperCollins"),
-					WebsiteID: toPtr(int64(1)),
+					ID:         1,
+					Name:       "Neal Stephenson",
+					Publisher:  toPtr("HarperCollins"),
+					Pseudonyms: []string{"Neal S"},
+					WebsiteID:  toPtr(int64(1)),
 					Website: &Website{
 						ID:  1,
 						URL: "https://nealstephenson.com/",
@@ -408,10 +450,11 @@ var testCases = []struct {
 					Currency: "USD",
 				},
 				Author: Author{
-					ID:        1,
-					Name:      "Neal Stephenson",
-					Publisher: toPtr("HarperCollins"),
-					WebsiteID: toPtr(int64(1)),
+					ID:         1,
+					Name:       "Neal Stephenson",
+					Publisher:  toPtr("HarperCollins"),
+					Pseudonyms: []string{"Neal S"},
+					WebsiteID:  toPtr(int64(1)),
 					Website: &Website{
 						ID:  1,
 						URL: "https://nealstephenson.com/",
@@ -432,6 +475,7 @@ var testCases = []struct {
 				Author: Author{
 					ID:         2,
 					Name:       "James Joyce",
+					Pseudonyms: []string{"Jamie J", "JJ"},
 					HometownID: toPtr(int64(1)),
 					Timestamps: Timestamps{
 						CreatedAt: getCreatedAt(),
@@ -456,10 +500,11 @@ var testCases = []struct {
 			ID:  1,
 			URL: "https://nealstephenson.com/",
 			Author: Author{
-				ID:        1,
-				Name:      "Neal Stephenson",
-				Publisher: toPtr("HarperCollins"),
-				WebsiteID: toPtr(int64(1)),
+				ID:         1,
+				Name:       "Neal Stephenson",
+				Publisher:  toPtr("HarperCollins"),
+				Pseudonyms: []string{"Neal S"},
+				WebsiteID:  toPtr(int64(1)),
 				Books: []Book{
 					{
 						ID:       1,

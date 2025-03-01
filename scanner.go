@@ -6,5 +6,3 @@ package scansion
 type Scanner interface {
 	Scan(v any) error
 }
-
-type scannerFunc func(i ...any) error

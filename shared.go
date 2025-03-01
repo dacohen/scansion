@@ -36,6 +36,10 @@ func buildHelper(fieldMap fieldMapType, path []string, target reflect.Value) err
 		childPath := strings.Join(newPath, ".")
 		childField := fieldMap[childPath]
 
+		if childField.Flat && childField.ScannedValue.IsValid() {
+			target.FieldByIndex(childField.StructIdx).Set(childField.ScannedValue)
+		}
+
 		childType := childField.Type
 		if childType.Kind() == reflect.Pointer {
 			childType = childType.Elem()
@@ -127,7 +131,7 @@ func sliceMerge(slice, elem reflect.Value) error {
 		for fieldIdx := 0; fieldIdx < elem.NumField(); fieldIdx++ {
 			sliceValField := sliceVal.Field(fieldIdx)
 			elemField := elem.Field(fieldIdx)
-			if elemField.Kind() == reflect.Slice {
+			if elemField.Kind() == reflect.Slice && elemField.Type().Elem().Kind() == reflect.Struct {
 				for elemIdx := 0; elemIdx < elemField.Len(); elemIdx++ {
 					if err := sliceMerge(sliceValField, elemField.Index(elemIdx)); err != nil {
 						return err

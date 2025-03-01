@@ -72,7 +72,8 @@ func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited
 		}
 
 		scannable := structField.Type.Implements(reflect.TypeOf(new(sql.Scanner)).Elem())
-		isFlat := slices.Contains(extraOptions, dbTagOptionFlat)
+		isFlat := slices.Contains(extraOptions, dbTagOptionFlat) ||
+			(structField.Type.Kind() == reflect.Slice && structField.Type.Elem().Kind() != reflect.Struct)
 		canRecurse := !scannable && !isFlat && !isBuiltinStruct(structField.Type)
 
 		if canRecurse {
