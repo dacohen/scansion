@@ -31,10 +31,10 @@ func hasPrefix[T comparable](s []T, p []T) bool {
 	return true
 }
 
-func getChildren(fieldMap fieldMapType, prefix []string) []string {
+func getChildren(fm fieldMap, prefix []string) []string {
 	var structChildren []string
 	var primitiveChildren []string
-	for k, v := range fieldMap.Map {
+	for k, v := range fm.Map {
 		if k == "" {
 			continue
 		}

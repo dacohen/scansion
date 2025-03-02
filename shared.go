@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func buildResult(v any, fieldMap fieldMapType) error {
+func buildResult(v any, fieldMap fieldMap) error {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
@@ -30,7 +30,7 @@ func buildResult(v any, fieldMap fieldMapType) error {
 	return nil
 }
 
-func buildHelper(fieldMap fieldMapType, path []string, target reflect.Value) error {
+func buildHelper(fieldMap fieldMap, path []string, target reflect.Value) error {
 	for _, childName := range getChildren(fieldMap, path) {
 		newPath := append(path, childName)
 		childPath := strings.Join(newPath, ".")
@@ -99,7 +99,7 @@ func buildHelper(fieldMap fieldMapType, path []string, target reflect.Value) err
 	return nil
 }
 
-func sliceMerge(fieldMap fieldMapType, slice, elem reflect.Value) error {
+func sliceMerge(fieldMap fieldMap, slice, elem reflect.Value) error {
 	if slice.Kind() != reflect.Slice {
 		return errors.New("first argument must be a slice")
 	}
@@ -152,7 +152,7 @@ func sliceMerge(fieldMap fieldMapType, slice, elem reflect.Value) error {
 	return nil
 }
 
-func structMerge(fieldMap fieldMapType, origStruct, newStruct reflect.Value) error {
+func structMerge(fieldMap fieldMap, origStruct, newStruct reflect.Value) error {
 	if origStruct.Kind() != reflect.Struct {
 		return errors.New("first argument must be a struct")
 	}

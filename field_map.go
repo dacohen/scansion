@@ -26,15 +26,15 @@ type fieldMapEntry struct {
 	Flat         bool
 }
 
-// type fieldMapType map[string]fieldMapEntry
-type fieldMapType struct {
+type fieldMap struct {
 	Map map[string]fieldMapEntry
 
+	// Used to store the index of the "pk" field for each struct type
 	pkFieldMap map[reflect.Type]int
 }
 
-func getFieldMap(v any) (fieldMapType, error) {
-	var empty fieldMapType
+func getFieldMap(v any) (fieldMap, error) {
+	var empty fieldMap
 
 	vType := reflect.TypeOf(v)
 	if vType.Kind() != reflect.Pointer || (vType.Elem().Kind() != reflect.Struct && vType.Elem().Kind() != reflect.Slice) {
@@ -47,7 +47,7 @@ func getFieldMap(v any) (fieldMapType, error) {
 
 	fieldMap, err := getFieldMapHelper(vType.Elem(), nil, nil, []reflect.Type{vType}, false)
 	if err != nil {
-		return fieldMapType{}, err
+		return empty, err
 	}
 
 	fieldMap.Map[""] = rootMapEntry
@@ -55,8 +55,8 @@ func getFieldMap(v any) (fieldMapType, error) {
 	return fieldMap, nil
 }
 
-func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited []reflect.Type, optional bool) (fieldMapType, error) {
-	fieldMap := fieldMapType{
+func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited []reflect.Type, optional bool) (fieldMap, error) {
+	fieldMap := fieldMap{
 		Map:        make(map[string]fieldMapEntry),
 		pkFieldMap: make(map[reflect.Type]int),
 	}
@@ -170,7 +170,7 @@ func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited
 	return fieldMap, nil
 }
 
-func (f *fieldMapType) getPkValue(v reflect.Value) (reflect.Value, error) {
+func (f *fieldMap) getPkValue(v reflect.Value) (reflect.Value, error) {
 	var pkValue reflect.Value
 
 	if v.Kind() == reflect.Pointer {
