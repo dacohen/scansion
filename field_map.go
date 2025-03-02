@@ -65,7 +65,7 @@ func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited
 		vType = vType.Elem()
 	}
 
-	for i := 0; i < vType.NumField(); i++ {
+	for i := range vType.NumField() {
 		structField := vType.Field(i)
 		fullDbTag := structField.Tag.Get(dbTagName)
 		if (fullDbTag == "" && !structField.Anonymous) || fullDbTag == dbTagIgnore {

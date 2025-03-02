@@ -109,7 +109,7 @@ func sliceMerge(fieldMap fieldMap, slice, elem reflect.Value) error {
 	}
 
 	startingSliceLen := slice.Len()
-	for i := 0; i < startingSliceLen; i++ {
+	for i := range startingSliceLen {
 		sliceVal := slice.Index(i)
 		slicePk, err := fieldMap.getPkValue(sliceVal)
 		if err != nil {
