@@ -26,12 +26,19 @@ type fieldMapEntry struct {
 	Flat         bool
 }
 
-type fieldMapType map[string]fieldMapEntry
+type fieldMap struct {
+	Map map[string]fieldMapEntry
 
-func getFieldMap(v any) (fieldMapType, error) {
+	// Used to store the index of the "pk" field for each struct type
+	pkFieldMap map[reflect.Type]int
+}
+
+func getFieldMap(v any) (fieldMap, error) {
+	var empty fieldMap
+
 	vType := reflect.TypeOf(v)
 	if vType.Kind() != reflect.Pointer || (vType.Elem().Kind() != reflect.Struct && vType.Elem().Kind() != reflect.Slice) {
-		return nil, errors.New("input is not a struct or slice pointer")
+		return empty, errors.New("input is not a struct or slice pointer")
 	}
 
 	rootMapEntry := fieldMapEntry{
@@ -40,22 +47,25 @@ func getFieldMap(v any) (fieldMapType, error) {
 
 	fieldMap, err := getFieldMapHelper(vType.Elem(), nil, nil, []reflect.Type{vType}, false)
 	if err != nil {
-		return fieldMapType{}, err
+		return empty, err
 	}
 
-	fieldMap[""] = rootMapEntry
+	fieldMap.Map[""] = rootMapEntry
 
 	return fieldMap, nil
 }
 
-func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited []reflect.Type, optional bool) (fieldMapType, error) {
-	fieldMap := make(fieldMapType)
+func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited []reflect.Type, optional bool) (fieldMap, error) {
+	fieldMap := fieldMap{
+		Map:        make(map[string]fieldMapEntry),
+		pkFieldMap: make(map[reflect.Type]int),
+	}
 
 	if vType.Kind() == reflect.Slice {
 		vType = vType.Elem()
 	}
 
-	for i := 0; i < vType.NumField(); i++ {
+	for i := range vType.NumField() {
 		structField := vType.Field(i)
 		fullDbTag := structField.Tag.Get(dbTagName)
 		if (fullDbTag == "" && !structField.Anonymous) || fullDbTag == dbTagIgnore {
@@ -90,9 +100,9 @@ func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited
 					append(visited, visitedType),
 					true)
 				if err != nil {
-					return nil, err
+					return fieldMap, err
 				}
-				maps.Copy(fieldMap, nestedMap)
+				maps.Copy(fieldMap.Map, nestedMap.Map)
 			} else if structField.Type.Kind() == reflect.Pointer &&
 				structField.Type.Elem().Kind() == reflect.Struct {
 				visitedType := structField.Type.Elem()
@@ -108,9 +118,9 @@ func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited
 					append(visited, visitedType),
 					true)
 				if err != nil {
-					return nil, err
+					return fieldMap, err
 				}
-				maps.Copy(fieldMap, nestedMap)
+				maps.Copy(fieldMap.Map, nestedMap.Map)
 			} else if structField.Type.Kind() == reflect.Struct && structField.Anonymous {
 				// Embedded struct
 				visitedType := structField.Type
@@ -122,9 +132,9 @@ func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited
 					visited,
 					false)
 				if err != nil {
-					return nil, err
+					return fieldMap, err
 				}
-				maps.Copy(fieldMap, nestedMap)
+				maps.Copy(fieldMap.Map, nestedMap.Map)
 
 				// Since this is an embedded struct, we should NOT create an entry in the fieldMap for it
 				continue
@@ -142,14 +152,14 @@ func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited
 					append(visited, visitedType),
 					false)
 				if err != nil {
-					return nil, err
+					return fieldMap, err
 				}
-				maps.Copy(fieldMap, nestedMap)
+				maps.Copy(fieldMap.Map, nestedMap.Map)
 			}
 		}
 
 		scopedName := strings.Join(append(path, dbFieldName), ".")
-		fieldMap[scopedName] = fieldMapEntry{
+		fieldMap.Map[scopedName] = fieldMapEntry{
 			Type:      structField.Type,
 			StructIdx: append(idxPath, i),
 			Optional:  optional,
@@ -160,7 +170,7 @@ func getFieldMapHelper(vType reflect.Type, path []string, idxPath []int, visited
 	return fieldMap, nil
 }
 
-func getPkValue(v reflect.Value) (reflect.Value, error) {
+func (f *fieldMap) getPkValue(v reflect.Value) (reflect.Value, error) {
 	var pkValue reflect.Value
 
 	if v.Kind() == reflect.Pointer {
@@ -171,7 +181,11 @@ func getPkValue(v reflect.Value) (reflect.Value, error) {
 		return reflect.Value{}, errors.New("input must be of type struct")
 	}
 
-	for i := 0; i < v.NumField(); i++ {
+	if fieldIdx, ok := f.pkFieldMap[v.Type()]; ok {
+		return v.Field(fieldIdx), nil
+	}
+
+	for i := range v.NumField() {
 		fieldType := v.Type().Field(i)
 		fieldVal := v.Field(i)
 		fullDbTag := fieldType.Tag.Get(dbTagName)
@@ -186,6 +200,7 @@ func getPkValue(v reflect.Value) (reflect.Value, error) {
 				return reflect.Value{}, errors.New("exactly one column must have 'pk' set")
 			}
 			pkValue = fieldVal
+			f.pkFieldMap[v.Type()] = i
 		}
 	}
 

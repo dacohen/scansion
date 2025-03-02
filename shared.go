@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func buildResult(v any, fieldMap fieldMapType) error {
+func buildResult(v any, fieldMap fieldMap) error {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
@@ -18,7 +18,7 @@ func buildResult(v any, fieldMap fieldMapType) error {
 		if err := buildHelper(fieldMap, nil, sliceElem); err != nil {
 			return err
 		}
-		if err := sliceMerge(val, sliceElem); err != nil {
+		if err := sliceMerge(fieldMap, val, sliceElem); err != nil {
 			return err
 		}
 	} else {
@@ -30,11 +30,11 @@ func buildResult(v any, fieldMap fieldMapType) error {
 	return nil
 }
 
-func buildHelper(fieldMap fieldMapType, path []string, target reflect.Value) error {
+func buildHelper(fieldMap fieldMap, path []string, target reflect.Value) error {
 	for _, childName := range getChildren(fieldMap, path) {
 		newPath := append(path, childName)
 		childPath := strings.Join(newPath, ".")
-		childField := fieldMap[childPath]
+		childField := fieldMap.Map[childPath]
 
 		if childField.Flat && childField.ScannedValue.IsValid() {
 			target.FieldByIndex(childField.StructIdx).Set(childField.ScannedValue)
@@ -84,7 +84,7 @@ func buildHelper(fieldMap fieldMapType, path []string, target reflect.Value) err
 			if localTarget.Kind() == reflect.Struct {
 				targetField := localTarget.FieldByIndex(childField.StructIdx)
 				if targetField.Kind() == reflect.Slice {
-					if err := sliceMerge(targetField, childTarget); err != nil {
+					if err := sliceMerge(fieldMap, targetField, childTarget); err != nil {
 						return err
 					}
 				} else {
@@ -99,7 +99,7 @@ func buildHelper(fieldMap fieldMapType, path []string, target reflect.Value) err
 	return nil
 }
 
-func sliceMerge(slice, elem reflect.Value) error {
+func sliceMerge(fieldMap fieldMap, slice, elem reflect.Value) error {
 	if slice.Kind() != reflect.Slice {
 		return errors.New("first argument must be a slice")
 	}
@@ -109,13 +109,13 @@ func sliceMerge(slice, elem reflect.Value) error {
 	}
 
 	startingSliceLen := slice.Len()
-	for i := 0; i < startingSliceLen; i++ {
+	for i := range startingSliceLen {
 		sliceVal := slice.Index(i)
-		slicePk, err := getPkValue(sliceVal)
+		slicePk, err := fieldMap.getPkValue(sliceVal)
 		if err != nil {
 			return err
 		}
-		elemPk, err := getPkValue(elem)
+		elemPk, err := fieldMap.getPkValue(elem)
 		if err != nil {
 			return err
 		}
@@ -133,12 +133,12 @@ func sliceMerge(slice, elem reflect.Value) error {
 			elemField := elem.Field(fieldIdx)
 			if elemField.Kind() == reflect.Slice && elemField.Type().Elem().Kind() == reflect.Struct {
 				for elemIdx := 0; elemIdx < elemField.Len(); elemIdx++ {
-					if err := sliceMerge(sliceValField, elemField.Index(elemIdx)); err != nil {
+					if err := sliceMerge(fieldMap, sliceValField, elemField.Index(elemIdx)); err != nil {
 						return err
 					}
 				}
 			} else if elemField.Kind() == reflect.Struct {
-				if err := structMerge(sliceValField, elemField); err != nil {
+				if err := structMerge(fieldMap, sliceValField, elemField); err != nil {
 					return err
 				}
 			}
@@ -152,7 +152,7 @@ func sliceMerge(slice, elem reflect.Value) error {
 	return nil
 }
 
-func structMerge(origStruct, newStruct reflect.Value) error {
+func structMerge(fieldMap fieldMap, origStruct, newStruct reflect.Value) error {
 	if origStruct.Kind() != reflect.Struct {
 		return errors.New("first argument must be a struct")
 	}
@@ -165,12 +165,12 @@ func structMerge(origStruct, newStruct reflect.Value) error {
 		sliceValField := origStruct.Field(fieldIdx)
 		elemField := newStruct.Field(fieldIdx)
 		if sliceValField.Kind() == reflect.Struct {
-			if err := structMerge(sliceValField, elemField); err != nil {
+			if err := structMerge(fieldMap, sliceValField, elemField); err != nil {
 				return err
 			}
 		} else if sliceValField.Kind() == reflect.Slice {
 			for elemIdx := 0; elemIdx < elemField.Len(); elemIdx++ {
-				if err := sliceMerge(sliceValField, elemField.Index(elemIdx)); err != nil {
+				if err := sliceMerge(fieldMap, sliceValField, elemField.Index(elemIdx)); err != nil {
 					return err
 				}
 			}

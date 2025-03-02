@@ -1,0 +1,38 @@
+name: Run Benchmarks
+on: [push]
+jobs:
+    benchmark:
+        runs-on: ubuntu-latest
+        container: golang:1.24
+    
+        services:
+            postgres:
+                image: postgres:17
+                env:
+                    POSTGRES_PASSWORD: postgres
+                    POSTGRES_DB: scansion_test
+                options: >-
+                    --health-cmd pg_isready
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        steps:
+            - uses: actions/checkout@v4
+            - name: Run benchmark
+              env:
+                DATABASE_URL: "user=postgres host=postgres port=5432 password=postgres dbname=scansion_test"
+              run: |
+                go test -bench 'Benchmark' | tee output.txt
+            - name: Download previous benchmark data
+              uses: actions/cache@v4
+              with:
+                path: ./cache
+                key: ${{runner.os}}-benchmark
+            - name: Store benchmark result
+              uses: benchmark-action/github-action-benchmark@v1
+              with:
+                tool: go
+                output-file-path: output.txt
+                external-data-json-path: ./cache/benchmark-data.json
+                fail-on-alert: true
+                summary-always: true

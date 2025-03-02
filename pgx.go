@@ -52,7 +52,7 @@ func (p *PgxScanner) Scan(v any) (err error) {
 	return nil
 }
 
-func (p *PgxScanner) scanRow(fieldMap fieldMapType) error {
+func (p *PgxScanner) scanRow(fm fieldMap) error {
 	fieldDescriptions := p.Rows.FieldDescriptions()
 	targets := make([]any, len(fieldDescriptions))
 	fields := make([]fieldMapEntry, len(fieldDescriptions))
@@ -67,7 +67,7 @@ func (p *PgxScanner) scanRow(fieldMap fieldMapType) error {
 		}
 
 		scopedName := strings.Join(append(path, desc.Name), ".")
-		fieldEntry, ok := fieldMap[scopedName]
+		fieldEntry, ok := fm.Map[scopedName]
 		if !ok {
 			return fmt.Errorf("field %s not defined in scan target", scopedName)
 		}
@@ -104,7 +104,7 @@ func (p *PgxScanner) scanRow(fieldMap fieldMapType) error {
 		}
 
 		currentField.ScannedValue = targetVal
-		fieldMap[scopedNames[idx]] = currentField
+		fm.Map[scopedNames[idx]] = currentField
 	}
 
 	return nil

@@ -51,7 +51,7 @@ func (s *SqlScanner) Scan(v any) (err error) {
 	return nil
 }
 
-func (s *SqlScanner) scanRow(fieldMap fieldMapType) error {
+func (s *SqlScanner) scanRow(fm fieldMap) error {
 	columnTypes, err := s.Rows.ColumnTypes()
 	if err != nil {
 		return err
@@ -75,7 +75,7 @@ func (s *SqlScanner) scanRow(fieldMap fieldMapType) error {
 		}
 
 		scopedName := strings.Join(append(path, col.Name()), ".")
-		fieldEntry, ok := fieldMap[scopedName]
+		fieldEntry, ok := fm.Map[scopedName]
 		if !ok {
 			return fmt.Errorf("field %s not defined in scan target", scopedName)
 		}
@@ -116,7 +116,7 @@ func (s *SqlScanner) scanRow(fieldMap fieldMapType) error {
 		}
 
 		currentField.ScannedValue = targetVal
-		fieldMap[scopedNames[idx]] = currentField
+		fm.Map[scopedNames[idx]] = currentField
 	}
 
 	return nil
