@@ -75,3 +75,33 @@ func TestPgxScan(t *testing.T) {
 		require.ErrorIs(t, err, pgx.ErrNoRows)
 	})
 }
+
+func BenchmarkPgxScan(b *testing.B) {
+	dbUrl, ok := os.LookupEnv("DATABASE_URL")
+	if !ok {
+		dbUrl = "host=localhost user=postgres dbname=scansion_test"
+	}
+
+	ctx := context.Background()
+	db, err := pgx.Connect(ctx, dbUrl)
+	require.NoError(b, err)
+	defer db.Close(ctx)
+
+	type testStruct struct {
+		Value int `db:"value,pk"`
+	}
+
+	for b.Loop() {
+		tx, err := db.Begin(ctx)
+		require.NoError(b, err)
+
+		rows, err := tx.Query(ctx, "SELECT generate_series AS value FROM generate_series(1, 10000)")
+		require.NoError(b, err)
+
+		var numbers []testStruct
+		err = scansion.NewPgxScanner(rows).Scan(&numbers)
+		require.NoError(b, err)
+
+		tx.Rollback(ctx)
+	}
+}
