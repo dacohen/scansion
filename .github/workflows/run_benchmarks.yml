@@ -19,6 +19,8 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - name: Run benchmark
+              env:
+                DATABASE_URL: "user=postgres host=postgres port=5432 password=postgres dbname=scansion_test"
               run: |
                 go test -bench 'Benchmark' | tee output.txt
             - name: Download previous benchmark data
