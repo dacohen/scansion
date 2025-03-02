@@ -88,18 +88,16 @@ func BenchmarkSqlScan(b *testing.B) {
 		Value int `db:"value,pk"`
 	}
 
-	for b.Loop() {
-		tx, err := db.Begin()
-		require.NoError(b, err)
-		defer tx.Rollback()
+	tx, err := db.Begin()
+	require.NoError(b, err)
+	defer tx.Rollback()
 
-		rows, err := tx.Query("SELECT generate_series AS value FROM generate_series(1, 10000)")
-		require.NoError(b, err)
+	rows, err := tx.Query("SELECT generate_series AS value FROM generate_series(1, $1)", b.N)
+	require.NoError(b, err)
 
-		var numbers []testStruct
-		err = scansion.NewSqlScanner(rows).Scan(&numbers)
-		require.NoError(b, err)
+	var numbers []testStruct
+	err = scansion.NewSqlScanner(rows).Scan(&numbers)
+	require.NoError(b, err)
 
-		tx.Rollback()
-	}
+	tx.Rollback()
 }

@@ -3,7 +3,7 @@ on: [push]
 jobs:
   test:
     runs-on: ubuntu-latest
-    container: golang:1.23
+    container: golang:1.24
 
     strategy:
       matrix:
